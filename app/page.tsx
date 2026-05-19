@@ -1,8 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { createClient } from "../utils/supabase";
+import { createClient } from "@/utils/supabase";
+import { Sidebar } from "@/components/Sidebar";
+import { ResultCard } from "@/components/ResultCard";
+import { Toast } from "@/components/Toast";
+import { HistorySection } from "@/components/HistorySection";
+import { GeneratorForm } from "@/components/GeneratorForm";
+import { PricingSection } from "@/components/PricingSection";
+import { SettingsSection } from "@/components/SettingsSection";
+import { AdminSection } from "@/components/AdminSection";
+import {
+  ensureUserAccount,
+  loadHistory as loadHistoryFromCloud,
+  loadTodayCount as loadTodayCountFromCloud,
+  saveGenerationToCloud as saveGenerationToCloudToCloud,
+  loadProfiles,
+  type Profile,
+  type Plan,
+} from "@/lib/account";
+
+type AdminProfile = {
+  id: string;
+  email: string | null;
+  role: "user" | "admin";
+  created_at: string;
+};
 
 type ResultBlock = {
   title: string;
@@ -21,7 +45,7 @@ type HistoryItem = {
 
 type ToastType = "success" | "error" | "info";
 
-type Toast = {
+type ToastState = {
   message: string;
   type: ToastType;
 };
@@ -68,19 +92,26 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [copiedTitle, setCopiedTitle] = useState("");
   const [user, setUser] = useState<User | null>(null);
-  const [toast, setToast] = useState<Toast | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<Plan | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
   const [todayCount, setTodayCount] = useState(0);
   const [guestCount, setGuestCount] = useState(0);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [profiles, setProfiles] = useState<AdminProfile[]>([]);
 
-  const dailyLimit = 5;
+  const supabase = useMemo(() => createClient(), []);
+
   const guestLimit = 3;
+  const dailyLimit = currentPlan?.daily_limit ?? 5;
+  const isAdmin = profile?.role === "admin";
 
-  const limitReached = user
+  const limitReached = isAdmin
+    ? false
+    : user
     ? todayCount >= dailyLimit
     : guestCount >= guestLimit;
 
-  const supabase = createClient();
   const resultBlocks = result ? parseResult(result) : [];
 
   function showToast(message: string, type: ToastType = "success") {
@@ -91,19 +122,43 @@ export default function Home() {
     }, 2500);
   }
 
-  useEffect(() => {
-    async function initUser() {
-      const { data } = await supabase.auth.getUser();
+  async function handleAuthenticatedUser(currentUser: User) {
+    setUser(currentUser);
 
-      setUser(data.user);
+    const account = await ensureUserAccount(supabase, currentUser);
 
-      if (data.user) {
-        await loadHistory(data.user.id);
-        await loadTodayCount(data.user.id);
-      }
+    setProfile(account.profile);
+    setCurrentPlan(account.plan);
+
+    const historyData = await loadHistoryFromCloud(supabase, currentUser.id);
+    const count = await loadTodayCountFromCloud(supabase, currentUser.id);
+
+    setHistory(historyData as HistoryItem[]);
+    setTodayCount(count);
+
+    if (account.profile.role === "admin") {
+      const profilesData = await loadProfiles(supabase);
+      setProfiles(profilesData as AdminProfile[]);
+    } else {
+      setProfiles([]);
     }
+  }
 
-    initUser();
+  function resetUserState() {
+    setUser(null);
+    setHistory([]);
+    setTodayCount(0);
+    setProfile(null);
+    setCurrentPlan(null);
+    setProfiles([]);
+  }
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+
+    if (url.searchParams.has("code")) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
 
     const savedGuestCount = localStorage.getItem("guest-generation-count");
 
@@ -111,57 +166,49 @@ export default function Home() {
       setGuestCount(Number(savedGuestCount));
     }
 
+    async function initUser() {
+      const { data } = await supabase.auth.getUser();
+
+      if (data.user) {
+        await handleAuthenticatedUser(data.user);
+      }
+    }
+
+    initUser();
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-
       if (session?.user) {
-        loadHistory(session.user.id);
-        loadTodayCount(session.user.id);
+        setTimeout(() => {
+          handleAuthenticatedUser(session.user);
+        }, 0);
       } else {
-        setHistory([]);
-        setTodayCount(0);
+        resetUserState();
       }
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [supabase]);
 
   async function loadTodayCount(userId: string) {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const { count, error } = await supabase
-      .from("generations")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .gte("created_at", startOfDay.toISOString());
-
-    if (error) {
+    try {
+      const count = await loadTodayCountFromCloud(supabase, userId);
+      setTodayCount(count);
+    } catch (error) {
       console.error(error);
-      return;
     }
-
-    setTodayCount(count || 0);
   }
 
   async function loadHistory(userId: string) {
-    const { data, error } = await supabase
-      .from("generations")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(10);
-
-    if (error) {
+    try {
+      const data = await loadHistoryFromCloud(supabase, userId);
+      setHistory(data as HistoryItem[]);
+    } catch (error) {
       console.error(error);
-      return;
     }
-
-    setHistory(data || []);
   }
 
   async function saveGenerationToCloud(
@@ -172,21 +219,21 @@ export default function Home() {
   ) {
     if (!user) return;
 
-    const { error } = await supabase.from("generations").insert({
-      user_id: user.id,
-      topic: currentTopic,
-      platform: currentPlatform,
-      style: currentStyle,
-      result: currentResult,
-    });
+    try {
+      await saveGenerationToCloudToCloud(
+        supabase,
+        user.id,
+        currentTopic,
+        currentPlatform,
+        currentStyle,
+        currentResult
+      );
 
-    if (error) {
+      await loadHistory(user.id);
+      await loadTodayCount(user.id);
+    } catch (error) {
       console.error(error);
-      return;
     }
-
-    await loadHistory(user.id);
-    await loadTodayCount(user.id);
   }
 
   async function generateContent() {
@@ -332,82 +379,53 @@ ${result}
   }
 
   async function logout() {
-    await supabase.auth.signOut();
+    try {
+      const { error } = await supabase.auth.signOut();
 
-    setUser(null);
-    setHistory([]);
-    setTodayCount(0);
+      if (error) {
+        console.error("Ошибка выхода:", error);
+        showToast("Не удалось выйти из аккаунта", "error");
+        return;
+      }
 
-    showToast("Вы вышли из аккаунта", "info");
+      resetUserState();
+
+      showToast("Вы вышли из аккаунта", "info");
+
+      setTimeout(() => {
+        window.location.replace("/");
+      }, 300);
+    } catch (error) {
+      console.error("Ошибка выхода:", error);
+      showToast("Не удалось выйти из аккаунта", "error");
+    }
   }
 
   const menuItems = [
-    "🏠 Dashboard",
-    "✨ Генератор",
-    "📜 История",
-    "💎 Тарифы",
-    "⚙️ Настройки",
+    { label: "🏠 Dashboard", id: "dashboard" },
+    { label: "✨ Генератор", id: "generator" },
+    { label: "📜 История", id: "history" },
+    { label: "💎 Тарифы", id: "pricing" },
+    { label: "⚙️ Настройки", id: "settings" },
+    ...(isAdmin ? [{ label: "🛠️ Админка", id: "admin" }] : []),
   ];
 
-  function SidebarContent() {
-    return (
-      <>
-        <div className="mb-10">
-          <h1 className="text-3xl font-black leading-[0.9]">
-            <span className="block">Контент</span>
+  function scrollToSection(id: string) {
+    const element = document.getElementById(id);
 
-            <span className="block text-violet-400">
-              Помощник
-            </span>
-          </h1>
+    if (element) {
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
 
-          <p className="mt-2 text-sm text-gray-400">AI SaaS Dashboard</p>
-        </div>
-
-        <nav className="space-y-2">
-          {menuItems.map((item, index) => (
-            <button
-              key={item}
-              onClick={() => setIsMobileMenuOpen(false)}
-              className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition ${
-                index === 0
-                  ? "bg-white/10 font-bold"
-                  : "text-gray-300 hover:bg-white/10"
-              }`}
-            >
-              {item}
-            </button>
-          ))}
-        </nav>
-
-        <div className="mt-10 rounded-3xl border border-violet-400/20 bg-violet-400/10 p-5">
-          <p className="text-sm text-violet-200">Бесплатный план</p>
-
-          <p className="mt-2 text-3xl font-black">
-            {user ? `${todayCount}/${dailyLimit}` : `${guestCount}/${guestLimit}`}
-          </p>
-
-          <p className="mt-2 text-sm text-gray-300">Генераций сегодня</p>
-        </div>
-      </>
-    );
+    setIsMobileMenuOpen(false);
   }
 
   return (
     <main className="min-h-screen bg-[#070b16] text-white">
-      {toast && (
-        <div
-          className={`fixed right-5 top-5 z-50 rounded-2xl border px-5 py-4 shadow-2xl backdrop-blur ${
-            toast.type === "success"
-              ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-100"
-              : toast.type === "error"
-              ? "border-red-400/20 bg-red-400/10 text-red-100"
-              : "border-cyan-400/20 bg-cyan-400/10 text-cyan-100"
-          }`}
-        >
-          <p className="font-bold">{toast.message}</p>
-        </div>
-      )}
+      <Toast toast={toast} />
 
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.28),transparent_35%),radial-gradient(circle_at_top_right,rgba(34,211,238,0.18),transparent_30%)]" />
 
@@ -431,14 +449,34 @@ ${result}
               </button>
             </div>
 
-            <SidebarContent />
+            <Sidebar
+              menuItems={menuItems}
+              user={user}
+              todayCount={todayCount}
+              dailyLimit={dailyLimit}
+              guestCount={guestCount}
+              guestLimit={guestLimit}
+              onNavigate={scrollToSection}
+              planName={currentPlan?.name || "Free"}
+              isAdmin={isAdmin}
+            />
           </aside>
         </div>
       )}
 
       <div className="relative flex min-h-screen">
-        <aside className="hidden w-[300px] shrink-0 border-r border-white/10 bg-black/20 p-6 backdrop-blur lg:block">
-          <SidebarContent />
+        <aside className="sticky top-0 hidden h-screen w-[260px] shrink-0 border-r border-white/10 bg-black/20 p-6 backdrop-blur lg:block">
+          <Sidebar
+            menuItems={menuItems}
+            user={user}
+            todayCount={todayCount}
+            dailyLimit={dailyLimit}
+            guestCount={guestCount}
+            guestLimit={guestLimit}
+            onNavigate={scrollToSection}
+            planName={currentPlan?.name || "Free"}
+            isAdmin={isAdmin}
+          />
         </aside>
 
         <div className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
@@ -453,7 +491,6 @@ ${result}
 
               <div>
                 <h2 className="text-2xl font-black">Dashboard</h2>
-
                 <p className="text-sm text-gray-400">Управление AI-контентом</p>
               </div>
             </div>
@@ -465,7 +502,13 @@ ${result}
                     {user.email}
                   </p>
 
-                  <p className="text-xs text-emerald-300">Аккаунт активен</p>
+                  <p className="text-xs text-emerald-300">
+                    {profile?.role === "admin"
+                      ? "Администратор"
+                      : currentPlan
+                      ? `Тариф: ${currentPlan.name}`
+                      : "Аккаунт активен"}
+                  </p>
                 </div>
 
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-violet-300 to-cyan-300 font-black text-black">
@@ -489,7 +532,10 @@ ${result}
             )}
           </header>
 
-          <section className="mb-10 grid gap-4 md:grid-cols-3">
+          <section
+            id="dashboard"
+            className="scroll-mt-8 mb-10 grid gap-4 md:grid-cols-3"
+          >
             <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
               <p className="text-sm text-gray-400">Статус</p>
               <p className="mt-2 text-2xl font-black">
@@ -505,14 +551,19 @@ ${result}
             <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
               <p className="text-sm text-gray-400">Лимит</p>
               <p className="mt-2 text-2xl font-black">
-                {user
+                {isAdmin
+                  ? "∞"
+                  : user
                   ? `${todayCount}/${dailyLimit}`
                   : `${guestCount}/${guestLimit}`}
               </p>
             </div>
           </section>
 
-          <section className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
+          <section
+            id="generator"
+            className="scroll-mt-8 grid gap-8 lg:grid-cols-[0.9fr_1.1fr]"
+          >
             <div className="rounded-[36px] border border-white/10 bg-white/5 p-8 backdrop-blur">
               <div className="mb-6 inline-flex rounded-full border border-violet-400/20 bg-violet-400/10 px-4 py-2 text-sm text-violet-200">
                 AI Dashboard
@@ -528,53 +579,18 @@ ${result}
               </p>
             </div>
 
-            <div className="rounded-[36px] border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur">
-              <div className="space-y-4">
-                <textarea
-                  value={topic}
-                  onChange={(event) => setTopic(event.target.value)}
-                  className="min-h-[150px] w-full resize-none rounded-3xl border border-white/10 bg-black/20 p-5 outline-none"
-                />
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <select
-                    value={platform}
-                    onChange={(event) => setPlatform(event.target.value)}
-                    className="rounded-2xl border border-white/10 bg-black/20 p-4"
-                  >
-                    <option>VK Клипы</option>
-                    <option>Telegram</option>
-                    <option>YouTube Shorts</option>
-                  </select>
-
-                  <select
-                    value={style}
-                    onChange={(event) => setStyle(event.target.value)}
-                    className="rounded-2xl border border-white/10 bg-black/20 p-4"
-                  >
-                    <option>Дружелюбный</option>
-                    <option>Экспертный</option>
-                    <option>Дерзкий</option>
-                    <option>Продающий</option>
-                    <option>Музыкальный</option>
-                  </select>
-                </div>
-
-                <button
-                  onClick={generateContent}
-                  disabled={isLoading || limitReached}
-                  className="w-full rounded-3xl bg-gradient-to-r from-violet-300 to-cyan-300 px-7 py-5 font-black text-black transition hover:scale-[1.01] disabled:opacity-60"
-                >
-                  {limitReached
-                    ? user
-                      ? "Лимит на сегодня закончился"
-                      : "Войдите, чтобы продолжить"
-                    : isLoading
-                    ? "Генерирую оформление..."
-                    : "Сгенерировать оформление"}
-                </button>
-              </div>
-            </div>
+            <GeneratorForm
+              topic={topic}
+              platform={platform}
+              style={style}
+              isLoading={isLoading}
+              limitReached={limitReached}
+              user={user}
+              onTopicChange={setTopic}
+              onPlatformChange={setPlatform}
+              onStyleChange={setStyle}
+              onGenerate={generateContent}
+            />
           </section>
 
           <section className="mt-14">
@@ -627,91 +643,31 @@ ${result}
             {!isLoading && result && resultBlocks.length > 0 && (
               <div className="grid gap-4 md:grid-cols-2">
                 {resultBlocks.map((block) => (
-                  <div
+                  <ResultCard
                     key={block.title}
-                    className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur transition hover:border-cyan-300/30"
-                  >
-                    <div className="mb-4 flex items-center justify-between gap-4">
-                      <h3 className="text-xl font-bold text-cyan-200">
-                        {block.title}
-                      </h3>
-
-                      <button
-                        onClick={() => copyText(block.title, block.content)}
-                        className="shrink-0 rounded-xl border border-white/10 px-3 py-2 text-xs"
-                      >
-                        {copiedTitle === block.title ? "Готово" : "Копировать"}
-                      </button>
-                    </div>
-
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-200">
-                      {block.content}
-                    </p>
-                  </div>
+                    title={block.title}
+                    content={block.content}
+                    copiedTitle={copiedTitle}
+                    onCopy={copyText}
+                  />
                 ))}
               </div>
             )}
           </section>
 
-          <section className="mt-20">
-            <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <h2 className="text-4xl font-black">История</h2>
-                <p className="mt-2 text-gray-400">Последние 10 генераций</p>
-              </div>
+          <HistorySection history={history} onClear={clearCloudHistory} />
 
-              {history.length > 0 && (
-                <button
-                  onClick={clearCloudHistory}
-                  className="rounded-2xl border border-red-400/20 bg-red-400/10 px-5 py-3 text-sm font-bold text-red-200 transition hover:bg-red-400/20"
-                >
-                  Очистить
-                </button>
-              )}
-            </div>
+          <PricingSection />
 
-            {!user && (
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-gray-400">
-                Войдите через Google для облачной истории.
-              </div>
-            )}
+          <SettingsSection
+            user={user}
+            todayCount={todayCount}
+            dailyLimit={dailyLimit}
+            planName={currentPlan?.name || "Free"}
+            isAdmin={isAdmin}
+          />
 
-            {user && history.length === 0 && (
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-gray-400">
-                Пока истории нет.
-              </div>
-            )}
-
-            {user && history.length > 0 && (
-              <div className="grid gap-4 md:grid-cols-2">
-                {history.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => openHistoryItem(item)}
-                    className="rounded-3xl border border-white/10 bg-white/5 p-6 text-left transition hover:border-cyan-300/40 hover:bg-white/10"
-                  >
-                    <div className="mb-3 flex flex-wrap gap-2">
-                      <span className="rounded-full bg-violet-400/10 px-3 py-1 text-xs text-violet-200">
-                        {item.platform}
-                      </span>
-
-                      <span className="rounded-full bg-cyan-400/10 px-3 py-1 text-xs text-cyan-200">
-                        {item.style}
-                      </span>
-                    </div>
-
-                    <h3 className="mb-3 line-clamp-2 text-lg font-bold">
-                      {item.topic}
-                    </h3>
-
-                    <p className="text-sm text-gray-400">
-                      {new Date(item.created_at).toLocaleString("ru-RU")}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
+          <AdminSection isAdmin={isAdmin} profiles={profiles} />
         </div>
       </div>
     </main>
