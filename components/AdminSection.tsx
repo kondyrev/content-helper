@@ -8,11 +8,16 @@ type AdminProfile = {
 type AdminSectionProps = {
   isAdmin: boolean;
   profiles: AdminProfile[];
+  onChangeRole: (
+  userId: string,
+  role: "user" | "admin"
+) => void;
 };
 
 export function AdminSection({
   isAdmin,
   profiles,
+  onChangeRole,
 }: AdminSectionProps) {
   if (!isAdmin) {
     return null;
@@ -65,6 +70,25 @@ export function AdminSection({
                 >
                   {profile.role}
                 </span>
+
+                  <div className="flex gap-2">
+                    {profile.role === "admin" ? (
+                      <button
+                        onClick={() => onChangeRole(profile.id, "user")}
+                        className="rounded-xl border border-red-400/20 bg-red-400/10 px-3 py-2 text-sm text-red-200 transition hover:bg-red-400/20"
+                      >
+                        Сделать user
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => onChangeRole(profile.id, "admin")}
+                        className="rounded-xl border border-violet-400/20 bg-violet-400/10 px-3 py-2 text-sm text-violet-200 transition hover:bg-violet-400/20"
+                      >
+                        Сделать admin
+                      </button>
+                    )}
+                  </div>
+
               </div>
             ))}
           </div>

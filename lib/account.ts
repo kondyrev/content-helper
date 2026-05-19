@@ -168,3 +168,20 @@ export async function loadProfiles(supabase: SupabaseClient) {
 
   return data || [];
 }
+
+export async function updateUserRole(
+  supabase: SupabaseClient,
+  userId: string,
+  role: "user" | "admin"
+) {
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      role,
+    })
+    .eq("id", userId);
+
+  if (error) {
+    throw error;
+  }
+}

@@ -17,6 +17,7 @@ import {
   loadTodayCount as loadTodayCountFromCloud,
   saveGenerationToCloud as saveGenerationToCloudToCloud,
   loadProfiles,
+  updateUserRole,
   type Profile,
   type Plan,
 } from "@/lib/account";
@@ -123,6 +124,7 @@ export default function Home() {
   }
 
   async function handleAuthenticatedUser(currentUser: User) {
+  try {
     setUser(currentUser);
 
     const account = await ensureUserAccount(supabase, currentUser);
@@ -142,7 +144,17 @@ export default function Home() {
     } else {
       setProfiles([]);
     }
+  } catch (error) {
+    console.error("Ошибка авторизации/профиля:", error);
+
+    resetUserState();
+
+    showToast(
+      "Не удалось загрузить профиль пользователя. Проверь Supabase/RLS.",
+      "error"
+    );
   }
+}
 
   function resetUserState() {
     setUser(null);
@@ -368,6 +380,30 @@ ${result}
     setHistory([]);
     showToast("История очищена", "success");
   }
+
+  async function changeUserRole(
+  userId: string,
+  role: "user" | "admin"
+) {
+  try {
+    await updateUserRole(supabase, userId, role);
+
+    const updatedProfiles = await loadProfiles(supabase);
+
+    setProfiles(updatedProfiles as AdminProfile[]);
+
+    showToast(
+      role === "admin"
+        ? "Пользователь стал администратором"
+        : "Права администратора сняты",
+      "success"
+    );
+  } catch (error) {
+    console.error(error);
+
+    showToast("Не удалось изменить роль", "error");
+  }
+}
 
   async function loginWithGoogle() {
     await supabase.auth.signInWithOAuth({
@@ -667,7 +703,10 @@ ${result}
             isAdmin={isAdmin}
           />
 
-          <AdminSection isAdmin={isAdmin} profiles={profiles} />
+          <AdminSection 
+            isAdmin={isAdmin} 
+            profiles={profiles} 
+            onChangeRole={changeUserRole}/>
         </div>
       </div>
     </main>
