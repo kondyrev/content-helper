@@ -185,3 +185,71 @@ export async function updateUserRole(
     throw error;
   }
 }
+
+export type UserSubscriptionWithPlan = {
+  user_id: string;
+  plan_id: string;
+  status: string;
+  plans: {
+    id: string;
+    name: string;
+    daily_limit: number;
+    price_month: number;
+  } | null;
+};
+
+export async function loadSubscriptions(supabase: SupabaseClient) {
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .select(`
+      user_id,
+      plan_id,
+      status,
+      plans (
+        id,
+        name,
+        daily_limit,
+        price_month
+      )
+    `)
+    .eq("status", "active");
+
+  if (error) {
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function updateUserPlan(
+  supabase: SupabaseClient,
+  userId: string,
+  planId: "free" | "creator" | "smm_pro"
+) {
+  const { data: updated, error: updateError } = await supabase
+    .from("subscriptions")
+    .update({
+      plan_id: planId,
+    })
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .select("id");
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  if (updated && updated.length > 0) {
+    return;
+  }
+
+  const { error: insertError } = await supabase.from("subscriptions").insert({
+    user_id: userId,
+    plan_id: planId,
+    status: "active",
+  });
+
+  if (insertError) {
+    throw insertError;
+  }
+}

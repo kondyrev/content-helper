@@ -20,6 +20,9 @@ import {
   updateUserRole,
   type Profile,
   type Plan,
+  loadSubscriptions,
+  updateUserPlan,
+
 } from "@/lib/account";
 
 type AdminProfile = {
@@ -27,6 +30,18 @@ type AdminProfile = {
   email: string | null;
   role: "user" | "admin";
   created_at: string;
+};
+
+type AdminSubscription = {
+  user_id: string;
+  plan_id: string;
+  status: string;
+  plans: {
+    id: string;
+    name: string;
+    daily_limit: number;
+    price_month: number;
+  } | null;
 };
 
 type ResultBlock = {
@@ -100,6 +115,7 @@ export default function Home() {
   const [guestCount, setGuestCount] = useState(0);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [profiles, setProfiles] = useState<AdminProfile[]>([]);
+  const [subscriptions, setSubscriptions] = useState<AdminSubscription[]>([]);
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -139,11 +155,15 @@ export default function Home() {
     setTodayCount(count);
 
     if (account.profile.role === "admin") {
-      const profilesData = await loadProfiles(supabase);
-      setProfiles(profilesData as AdminProfile[]);
-    } else {
-      setProfiles([]);
-    }
+  const profilesData = await loadProfiles(supabase);
+  const subscriptionsData = await loadSubscriptions(supabase);
+
+  setProfiles(profilesData as AdminProfile[]);
+  setSubscriptions(subscriptionsData as unknown as AdminSubscription[]);
+      } else {
+        setProfiles([]);
+        setSubscriptions([]);
+      }
   } catch (error) {
     console.error("Ошибка авторизации/профиля:", error);
 
@@ -163,6 +183,7 @@ export default function Home() {
     setProfile(null);
     setCurrentPlan(null);
     setProfiles([]);
+    setSubscriptions([]);
   }
 
   useEffect(() => {
@@ -204,6 +225,22 @@ export default function Home() {
       subscription.unsubscribe();
     };
   }, [supabase]);
+
+  useEffect(() => {
+  async function refreshAccount() {
+    const { data } = await supabase.auth.getUser();
+
+    if (data.user) {
+      await handleAuthenticatedUser(data.user);
+    }
+  }
+
+  window.addEventListener("focus", refreshAccount);
+
+  return () => {
+    window.removeEventListener("focus", refreshAccount);
+  };
+}, [supabase]);
 
   async function loadTodayCount(userId: string) {
     try {
@@ -402,6 +439,24 @@ ${result}
     console.error(error);
 
     showToast("Не удалось изменить роль", "error");
+  }
+}
+
+async function changeUserPlan(
+  userId: string,
+  planId: "free" | "creator" | "smm_pro"
+) {
+  try {
+    await updateUserPlan(supabase, userId, planId);
+
+    const updatedSubscriptions = await loadSubscriptions(supabase);
+
+    setSubscriptions(updatedSubscriptions as unknown as AdminSubscription[]);
+
+    showToast("Тариф пользователя обновлён", "success");
+  } catch (error) {
+    console.error(error);
+    showToast("Не удалось изменить тариф", "error");
   }
 }
 
@@ -703,10 +758,13 @@ ${result}
             isAdmin={isAdmin}
           />
 
-          <AdminSection 
-            isAdmin={isAdmin} 
-            profiles={profiles} 
-            onChangeRole={changeUserRole}/>
+          <AdminSection
+            isAdmin={isAdmin}
+            profiles={profiles}
+            subscriptions={subscriptions}
+            onChangeRole={changeUserRole}
+            onChangePlan={changeUserPlan}
+          />
         </div>
       </div>
     </main>
