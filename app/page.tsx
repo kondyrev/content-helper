@@ -98,7 +98,9 @@ export default function LandingPage() {
 
             <div className="mt-9 flex flex-wrap gap-4">
               <button
-                onClick={() => setIsAuthModalOpen(true)}
+                onClick={() => {
+                    window.location.href = "/dashboard";
+                    }}
                 className="rounded-2xl bg-gradient-to-r from-violet-300 to-cyan-300 px-8 py-4 font-black text-black shadow-2xl shadow-cyan-300/10 transition hover:scale-[1.03]"
               >
                 Попробовать бесплатно
@@ -282,7 +284,9 @@ export default function LandingPage() {
           </p>
 
           <button
-            onClick={() => setIsAuthModalOpen(true)}
+            onClick={() => {
+                window.location.href = "/dashboard";
+                }}
             className="mt-8 rounded-2xl bg-gradient-to-r from-violet-300 to-cyan-300 px-9 py-4 font-black text-black transition hover:scale-[1.03]"
           >
             Попробовать бесплатно
