@@ -686,22 +686,9 @@ async function changeUserPlan(
 
           <section
             id="generator"
-            className="scroll-mt-8 grid gap-8 lg:grid-cols-[0.9fr_1.1fr]"
+            className="scroll-mt-8"
           >
-            <div className="rounded-[36px] border border-white/10 bg-white/5 p-8 backdrop-blur">
-              <div className="mb-6 inline-flex rounded-full border border-violet-400/20 bg-violet-400/10 px-4 py-2 text-sm text-violet-200">
-                AI Dashboard
-              </div>
-
-              <h1 className="mb-6 text-4xl font-black leading-tight md:text-5xl">
-                Создавай контент быстрее
-              </h1>
-
-              <p className="text-lg leading-relaxed text-gray-300">
-                Генерируй описания, хештеги, CTA и идеи для публикаций в VK,
-                Telegram и Shorts.
-              </p>
-            </div>
+            
 
             <GeneratorForm
               topic={topic}
