@@ -16,14 +16,12 @@ import {
   ensureUserAccount,
   loadHistory as loadHistoryFromCloud,
   loadTodayCount as loadTodayCountFromCloud,
-  saveGenerationToCloud as saveGenerationToCloudToCloud,
   loadProfiles,
   updateUserRole,
   type Profile,
   type Plan,
   loadSubscriptions,
   updateUserPlan,
-
 } from "@/lib/account";
 
 type AdminProfile = {
@@ -128,8 +126,8 @@ export default function Home() {
   const limitReached = isAdmin
     ? false
     : user
-    ? todayCount >= dailyLimit
-    : guestCount >= guestLimit;
+      ? todayCount >= dailyLimit
+      : guestCount >= guestLimit;
 
   const resultBlocks = result ? parseResult(result) : [];
 
@@ -142,41 +140,41 @@ export default function Home() {
   }
 
   async function handleAuthenticatedUser(currentUser: User) {
-  try {
-    setUser(currentUser);
+    try {
+      setUser(currentUser);
 
-    const account = await ensureUserAccount(supabase, currentUser);
+      const account = await ensureUserAccount(supabase, currentUser);
 
-    setProfile(account.profile);
-    setCurrentPlan(account.plan);
+      setProfile(account.profile);
+      setCurrentPlan(account.plan);
 
-    const historyData = await loadHistoryFromCloud(supabase, currentUser.id);
-    const count = await loadTodayCountFromCloud(supabase, currentUser.id);
+      const historyData = await loadHistoryFromCloud(supabase, currentUser.id);
+      const count = await loadTodayCountFromCloud(supabase, currentUser.id);
 
-    setHistory(historyData as HistoryItem[]);
-    setTodayCount(count);
+      setHistory(historyData as HistoryItem[]);
+      setTodayCount(count);
 
-    if (account.profile.role === "admin") {
-  const profilesData = await loadProfiles(supabase);
-  const subscriptionsData = await loadSubscriptions(supabase);
+      if (account.profile.role === "admin") {
+        const profilesData = await loadProfiles(supabase);
+        const subscriptionsData = await loadSubscriptions(supabase);
 
-  setProfiles(profilesData as AdminProfile[]);
-  setSubscriptions(subscriptionsData as unknown as AdminSubscription[]);
+        setProfiles(profilesData as AdminProfile[]);
+        setSubscriptions(subscriptionsData as unknown as AdminSubscription[]);
       } else {
         setProfiles([]);
         setSubscriptions([]);
       }
-  } catch (error) {
-    console.error("Ошибка авторизации/профиля:", error);
+    } catch (error) {
+      console.error("Ошибка авторизации/профиля:", error);
 
-    resetUserState();
+      resetUserState();
 
-    showToast(
-      "Не удалось загрузить профиль пользователя. Проверь Supabase/RLS.",
-      "error"
-    );
+      showToast(
+        "Не удалось загрузить профиль пользователя. Проверь Supabase/RLS.",
+        "error"
+      );
+    }
   }
-}
 
   function resetUserState() {
     setUser(null);
@@ -229,59 +227,25 @@ export default function Home() {
   }, [supabase]);
 
   useEffect(() => {
-  async function refreshAccount() {
-    const { data } = await supabase.auth.getUser();
+    async function refreshAccount() {
+      const { data } = await supabase.auth.getUser();
 
-    if (data.user) {
-      await handleAuthenticatedUser(data.user);
+      if (data.user) {
+        await handleAuthenticatedUser(data.user);
+      }
     }
-  }
 
-  window.addEventListener("focus", refreshAccount);
+    window.addEventListener("focus", refreshAccount);
 
-  return () => {
-    window.removeEventListener("focus", refreshAccount);
-  };
-}, [supabase]);
-
-  async function loadTodayCount(userId: string) {
-    try {
-      const count = await loadTodayCountFromCloud(supabase, userId);
-      setTodayCount(count);
-    } catch (error) {
-      console.error(error);
-    }
-  }
+    return () => {
+      window.removeEventListener("focus", refreshAccount);
+    };
+  }, [supabase]);
 
   async function loadHistory(userId: string) {
     try {
       const data = await loadHistoryFromCloud(supabase, userId);
       setHistory(data as HistoryItem[]);
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  async function saveGenerationToCloud(
-    currentTopic: string,
-    currentPlatform: string,
-    currentStyle: string,
-    currentResult: string
-  ) {
-    if (!user) return;
-
-    try {
-      await saveGenerationToCloudToCloud(
-        supabase,
-        user.id,
-        currentTopic,
-        currentPlatform,
-        currentStyle,
-        currentResult
-      );
-
-      await loadHistory(user.id);
-      await loadTodayCount(user.id);
     } catch (error) {
       console.error(error);
     }
@@ -317,20 +281,26 @@ export default function Home() {
           platform,
           style,
         }),
-
       });
-
-      
 
       const data = await response.json();
 
       if (!response.ok) {
         setResult(data.error || "Ошибка генерации");
-        showToast("Ошибка генерации", "error");
+        showToast(data.error || "Ошибка генерации", "error");
+
+        if (typeof data.usedToday === "number") {
+          setTodayCount(data.usedToday);
+        }
+
         return;
       }
 
       setResult(data.result);
+
+      if (typeof data.usedToday === "number") {
+        setTodayCount(data.usedToday);
+      }
 
       if (!user) {
         const newGuestCount = guestCount + 1;
@@ -338,7 +308,9 @@ export default function Home() {
         localStorage.setItem("guest-generation-count", String(newGuestCount));
       }
 
-      //await saveGenerationToCloud(topic, platform, style, data.result);
+      if (user) {
+        await loadHistory(user.id);
+      }
 
       showToast("Контент успешно сгенерирован", "success");
     } catch (error) {
@@ -425,50 +397,47 @@ ${result}
     }
 
     setHistory([]);
+    setTodayCount(0);
     showToast("История очищена", "success");
   }
 
-  async function changeUserRole(
-  userId: string,
-  role: "user" | "admin"
-) {
-  try {
-    await updateUserRole(supabase, userId, role);
+  async function changeUserRole(userId: string, role: "user" | "admin") {
+    try {
+      await updateUserRole(supabase, userId, role);
 
-    const updatedProfiles = await loadProfiles(supabase);
+      const updatedProfiles = await loadProfiles(supabase);
 
-    setProfiles(updatedProfiles as AdminProfile[]);
+      setProfiles(updatedProfiles as AdminProfile[]);
 
-    showToast(
-      role === "admin"
-        ? "Пользователь стал администратором"
-        : "Права администратора сняты",
-      "success"
-    );
-  } catch (error) {
-    console.error(error);
-
-    showToast("Не удалось изменить роль", "error");
+      showToast(
+        role === "admin"
+          ? "Пользователь стал администратором"
+          : "Права администратора сняты",
+        "success"
+      );
+    } catch (error) {
+      console.error(error);
+      showToast("Не удалось изменить роль", "error");
+    }
   }
-}
 
-async function changeUserPlan(
-  userId: string,
-  planId: "free" | "creator" | "smm_pro"
-) {
-  try {
-    await updateUserPlan(supabase, userId, planId);
+  async function changeUserPlan(
+    userId: string,
+    planId: "free" | "creator" | "smm_pro"
+  ) {
+    try {
+      await updateUserPlan(supabase, userId, planId);
 
-    const updatedSubscriptions = await loadSubscriptions(supabase);
+      const updatedSubscriptions = await loadSubscriptions(supabase);
 
-    setSubscriptions(updatedSubscriptions as unknown as AdminSubscription[]);
+      setSubscriptions(updatedSubscriptions as unknown as AdminSubscription[]);
 
-    showToast("Тариф пользователя обновлён", "success");
-  } catch (error) {
-    console.error(error);
-    showToast("Не удалось изменить тариф", "error");
+      showToast("Тариф пользователя обновлён", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("Не удалось изменить тариф", "error");
+    }
   }
-}
 
   async function loginWithGoogle() {
     await supabase.auth.signInWithOAuth({
@@ -480,35 +449,35 @@ async function changeUserPlan(
   }
 
   async function loginWithEmail(
-  email: string,
-  password: string,
-  mode: "login" | "register"
-) {
-  const response =
-    mode === "login"
-      ? await supabase.auth.signInWithPassword({
-          email,
-          password,
-        })
-      : await supabase.auth.signUp({
-          email,
-          password,
-        });
+    email: string,
+    password: string,
+    mode: "login" | "register"
+  ) {
+    const response =
+      mode === "login"
+        ? await supabase.auth.signInWithPassword({
+            email,
+            password,
+          })
+        : await supabase.auth.signUp({
+            email,
+            password,
+          });
 
-  if (response.error) {
-    showToast(response.error.message, "error");
-    return;
+    if (response.error) {
+      showToast(response.error.message, "error");
+      return;
+    }
+
+    showToast(
+      mode === "login"
+        ? "Вы вошли в аккаунт"
+        : "Аккаунт создан. Проверьте почту.",
+      "success"
+    );
+
+    setIsAuthModalOpen(false);
   }
-
-  showToast(
-    mode === "login"
-      ? "Вы вошли в аккаунт"
-      : "Аккаунт создан. Проверьте почту.",
-    "success"
-  );
-
-  setIsAuthModalOpen(false);
-}
 
   async function logout() {
     try {
@@ -623,7 +592,9 @@ async function changeUserPlan(
 
               <div>
                 <h2 className="text-2xl font-black">Dashboard</h2>
-                <p className="text-sm text-gray-400">Управление AI-контентом</p>
+                <p className="text-sm text-gray-400">
+                  Управление AI-контентом
+                </p>
               </div>
             </div>
 
@@ -638,8 +609,8 @@ async function changeUserPlan(
                     {profile?.role === "admin"
                       ? "Администратор"
                       : currentPlan
-                      ? `Тариф: ${currentPlan.name}`
-                      : "Аккаунт активен"}
+                        ? `Тариф: ${currentPlan.name}`
+                        : "Аккаунт активен"}
                   </p>
                 </div>
 
@@ -686,18 +657,13 @@ async function changeUserPlan(
                 {isAdmin
                   ? "∞"
                   : user
-                  ? `${todayCount}/${dailyLimit}`
-                  : `${guestCount}/${guestLimit}`}
+                    ? `${todayCount}/${dailyLimit}`
+                    : `${guestCount}/${guestLimit}`}
               </p>
             </div>
           </section>
 
-          <section
-            id="generator"
-            className="scroll-mt-8"
-          >
-            
-
+          <section id="generator" className="scroll-mt-8">
             <GeneratorForm
               topic={topic}
               platform={platform}
@@ -794,43 +760,42 @@ async function changeUserPlan(
             onChangePlan={changeUserPlan}
           />
 
-             <footer className="mt-16 border-t border-white/10 py-8 text-sm text-gray-500">
-                <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-500">
-                  <a href="/oferta" className="hover:text-white transition">
-                    Оферта
-                  </a>
+          <footer className="mt-16 border-t border-white/10 py-8 text-sm text-gray-500">
+            <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-500">
+              <a href="/oferta" className="transition hover:text-white">
+                Оферта
+              </a>
 
-                  <a href="/privacy" className="hover:text-white transition">
-                    Политика конфиденциальности
-                  </a>
+              <a href="/privacy" className="transition hover:text-white">
+                Политика конфиденциальности
+              </a>
 
-                  <a href="/contacts" className="hover:text-white transition">
-                    Контакты
-                  </a>
-                  
-                  <a href="/refund" className="hover:text-white transition">
-                    Условия возврата
-                  </a>
+              <a href="/contacts" className="transition hover:text-white">
+                Контакты
+              </a>
 
-                  <a href="/payment-info" className="hover:text-white transition">
-                    Информация об оплате и оказании услуг
-                  </a>
+              <a href="/refund" className="transition hover:text-white">
+                Условия возврата
+              </a>
 
-                </div>
-                
-          © 2026 КонтентПомощник. AI-инструмент для оформления публикаций.
-        </footer>
+              <a href="/payment-info" className="transition hover:text-white">
+                Информация об оплате и оказании услуг
+              </a>
+            </div>
 
+            <p className="mt-4">
+              © 2026 КонтентПомощник. AI-инструмент для оформления публикаций.
+            </p>
+          </footer>
         </div>
       </div>
 
-            <AuthModal
-              isOpen={isAuthModalOpen}
-              onClose={() => setIsAuthModalOpen(false)}
-              onGoogleLogin={loginWithGoogle}
-              onEmailAuth={loginWithEmail}
-            />
-
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onGoogleLogin={loginWithGoogle}
+        onEmailAuth={loginWithEmail}
+      />
     </main>
   );
 }
