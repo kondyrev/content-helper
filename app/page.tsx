@@ -302,7 +302,21 @@ export default function LandingPage() {
                   <a href="/privacy" className="hover:text-white transition">
                     Политика конфиденциальности
                   </a>
+
+                  <a href="/contacts" className="hover:text-white transition">
+                    Контакты
+                  </a>
+                  
+                  <a href="/refund" className="hover:text-white transition">
+                    Условия возврата
+                  </a>
+
+                  <a href="/payment-info" className="hover:text-white transition">
+                    Информация об оплате и оказании услуг
+                  </a>
+
                 </div>
+                
           © 2026 КонтентПомощник. AI-инструмент для оформления публикаций.
         </footer>
       </div>

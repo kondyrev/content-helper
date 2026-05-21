@@ -1,22 +1,33 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const apiKey = process.env.OPENAI_API_KEY;
 
+    if (!apiKey) {
+      console.error("OPENAI_API_KEY is missing");
+
+      return NextResponse.json(
+        { error: "AI service is not configured" },
+        { status: 500 }
+      );
+    }
+
+    const body = await request.json();
     const { topic, platform, style } = body;
 
-    if (!topic) {
+    if (!topic || typeof topic !== "string") {
       return NextResponse.json(
         { error: "Не указана тема видео" },
         { status: 400 }
       );
     }
+
+    const client = new OpenAI({
+      apiKey,
+      timeout: 30_000,
+    });
 
     const prompt = `
 Ты — опытный SMM-редактор и контент-маркетолог.
@@ -27,10 +38,10 @@ export async function POST(request: Request) {
 ${topic}
 
 Площадка:
-${platform}
+${platform || "не указана"}
 
 Стиль:
-${style}
+${style || "универсальный"}
 
 Выдай результат строго в такой структуре:
 
@@ -49,7 +60,16 @@ ${style}
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
       input: prompt,
+      temperature: 0.8,
+      max_output_tokens: 1200,
     });
+
+    if (!response.output_text) {
+      return NextResponse.json(
+        { error: "AI вернул пустой ответ" },
+        { status: 502 }
+      );
+    }
 
     return NextResponse.json({
       result: response.output_text,
@@ -57,36 +77,12 @@ ${style}
   } catch (error) {
     console.error("Ошибка генерации:", error);
 
-    const demoResult = `
-    1. Заголовок:
-    Как оформить видео так, чтобы его захотели досмотреть
-
-    2. Короткое описание:
-    Показываю простой способ подготовить ролик к публикации: заголовок, описание, хештеги и первый комментарий — без мучений и долгих раздумий.
-
-    3. SEO-описание:
-    В этом видео разбираем, как быстро оформить контент для VK Клипов, Telegram и Shorts. Такой подход помогает сделать публикацию понятнее, привлекательнее и удобнее для продвижения.
-
-    4. Первый комментарий:
-    А у тебя больше всего времени уходит на съёмку или на оформление поста?
-
-    5. Хештеги:
-    #контент #вкклипы #telegram #shorts #smm #нейросети #продвижение
-
-    6. Идеи для обложки:
-    — крупный заголовок: «Оформление за 30 секунд»
-    — фон: скрин интерфейса или процесс монтажа
-    — эмоция: удивление / результат до и после
-    — акцент: яркая кнопка или стрелка на результат
-
-    7. Призыв к действию:
-    Попробуй сам: напиши тему ролика и получи готовое оформление за пару секунд.
-    `;
-
-        return NextResponse.json({
-        result: demoResult,
-        isDemo: true,
-        });
-    
-    }
+    return NextResponse.json(
+      {
+        error:
+          "Не удалось сгенерировать контент. Попробуйте ещё раз через минуту.",
+      },
+      { status: 500 }
+    );
+  }
 }
