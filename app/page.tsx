@@ -294,6 +294,15 @@ export default function LandingPage() {
         </section>
 
         <footer className="mt-16 border-t border-white/10 py-8 text-sm text-gray-500">
+                <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-500">
+                  <a href="/oferta" className="hover:text-white transition">
+                    Оферта
+                  </a>
+
+                  <a href="/privacy" className="hover:text-white transition">
+                    Политика конфиденциальности
+                  </a>
+                </div>
           © 2026 КонтентПомощник. AI-инструмент для оформления публикаций.
         </footer>
       </div>
