@@ -785,6 +785,34 @@ async function changeUserPlan(
             onChangeRole={changeUserRole}
             onChangePlan={changeUserPlan}
           />
+
+             <footer className="mt-16 border-t border-white/10 py-8 text-sm text-gray-500">
+                <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-500">
+                  <a href="/oferta" className="hover:text-white transition">
+                    Оферта
+                  </a>
+
+                  <a href="/privacy" className="hover:text-white transition">
+                    Политика конфиденциальности
+                  </a>
+
+                  <a href="/contacts" className="hover:text-white transition">
+                    Контакты
+                  </a>
+                  
+                  <a href="/refund" className="hover:text-white transition">
+                    Условия возврата
+                  </a>
+
+                  <a href="/payment-info" className="hover:text-white transition">
+                    Информация об оплате и оказании услуг
+                  </a>
+
+                </div>
+                
+          © 2026 КонтентПомощник. AI-инструмент для оформления публикаций.
+        </footer>
+
         </div>
       </div>
 
