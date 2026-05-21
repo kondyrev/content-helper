@@ -338,7 +338,7 @@ export default function Home() {
         localStorage.setItem("guest-generation-count", String(newGuestCount));
       }
 
-      await saveGenerationToCloud(topic, platform, style, data.result);
+      //await saveGenerationToCloud(topic, platform, style, data.result);
 
       showToast("Контент успешно сгенерирован", "success");
     } catch (error) {
