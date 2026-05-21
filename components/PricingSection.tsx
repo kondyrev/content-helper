@@ -1,11 +1,63 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient  } from "@/utils/supabase";
+
+type PlanId = "creator" | "smm_pro";
+
 export function PricingSection() {
+  const router = useRouter();
+  const supabase = createClient();
+  const [loadingPlan, setLoadingPlan] = useState<PlanId | null>(null);
+
+  async function handleCheckout(planId: PlanId) {
+    try {
+      setLoadingPlan(planId);
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        router.push("/login");
+        return;
+      }
+
+      const response = await fetch("/api/robokassa/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          planId,
+          userId: user.id,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Ошибка создания платежа");
+      }
+
+      window.location.href = data.url;
+    } catch (error) {
+      console.error("Checkout error:", error);
+      alert("Не удалось создать оплату. Попробуйте позже.");
+    } finally {
+      setLoadingPlan(null);
+    }
+  }
+
   return (
     <section id="pricing" className="scroll-mt-8 mt-20">
       <div className="mb-6">
         <h2 className="text-4xl font-black">Тарифы</h2>
 
         <p className="mt-2 text-gray-400">
-          Пока это демо-блок. Позже подключим оплату и реальные подписки.
+          Выберите тариф и подключите больше возможностей для генерации контента.
         </p>
       </div>
 
@@ -15,7 +67,6 @@ export function PricingSection() {
 
           <div className="relative">
             <p className="text-sm text-gray-400">Free</p>
-
             <h3 className="mt-2 text-3xl font-black">0 ₽</h3>
 
             <div className="mt-4 space-y-2 text-gray-300">
@@ -24,7 +75,10 @@ export function PricingSection() {
               <p>• Базовые стили</p>
             </div>
 
-            <button className="mt-6 w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-bold transition hover:bg-white/10">
+            <button
+              disabled
+              className="mt-6 w-full cursor-default rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-bold text-gray-300"
+            >
               Текущий план
             </button>
           </div>
@@ -39,7 +93,6 @@ export function PricingSection() {
             </div>
 
             <p className="text-sm text-cyan-200">Creator</p>
-
             <h3 className="mt-2 text-3xl font-black">299 ₽/мес</h3>
 
             <div className="mt-4 space-y-2 text-gray-200">
@@ -48,8 +101,12 @@ export function PricingSection() {
               <p>• Приоритетная генерация</p>
             </div>
 
-            <button className="mt-6 w-full rounded-2xl bg-gradient-to-r from-cyan-300 to-violet-300 px-5 py-3 font-black text-black transition hover:scale-[1.02]">
-              Улучшить план
+            <button
+              onClick={() => handleCheckout("creator")}
+              disabled={loadingPlan === "creator"}
+              className="mt-6 w-full rounded-2xl bg-gradient-to-r from-cyan-300 to-violet-300 px-5 py-3 font-black text-black transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
+            >
+              {loadingPlan === "creator" ? "Создаём оплату..." : "Улучшить план"}
             </button>
           </div>
         </div>
@@ -59,7 +116,6 @@ export function PricingSection() {
 
           <div className="relative">
             <p className="text-sm text-violet-200">SMM Pro</p>
-
             <h3 className="mt-2 text-3xl font-black">990 ₽/мес</h3>
 
             <div className="mt-4 space-y-2 text-gray-300">
@@ -68,8 +124,12 @@ export function PricingSection() {
               <p>• Командная работа</p>
             </div>
 
-            <button className="mt-6 w-full rounded-2xl border border-violet-300/20 bg-violet-300/10 px-5 py-3 font-bold text-violet-100 transition hover:bg-violet-300/20">
-              Для команды
+            <button
+              onClick={() => handleCheckout("smm_pro")}
+              disabled={loadingPlan === "smm_pro"}
+              className="mt-6 w-full rounded-2xl border border-violet-300/20 bg-violet-300/10 px-5 py-3 font-bold text-violet-100 transition hover:bg-violet-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loadingPlan === "smm_pro" ? "Создаём оплату..." : "Для команды"}
             </button>
           </div>
         </div>
