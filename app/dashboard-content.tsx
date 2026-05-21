@@ -302,17 +302,25 @@ export default function Home() {
       setIsLoading(true);
       setResult("");
 
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token}`,
         },
         body: JSON.stringify({
           topic,
           platform,
           style,
         }),
+
       });
+
+      
 
       const data = await response.json();
 
