@@ -1,15 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { createClient  } from "@/utils/supabase";
+import { createClient } from "@/utils/supabase";
 
 type PlanId = "creator" | "smm_pro";
 
-export function PricingSection() {
-  const router = useRouter();
+type PricingSectionProps = {
+  onAuthRequired?: () => void;
+};
+
+export function PricingSection({
+  onAuthRequired,
+}: PricingSectionProps) {
   const supabase = createClient();
-  const [loadingPlan, setLoadingPlan] = useState<PlanId | null>(null);
+
+  const [loadingPlan, setLoadingPlan] =
+    useState<PlanId | null>(null);
 
   async function handleCheckout(planId: PlanId) {
     try {
@@ -21,7 +27,7 @@ export function PricingSection() {
       } = await supabase.auth.getUser();
 
       if (userError || !user) {
-        router.push("/login");
+        onAuthRequired?.();
         return;
       }
 
@@ -30,6 +36,7 @@ export function PricingSection() {
         headers: {
           "Content-Type": "application/json",
         },
+
         body: JSON.stringify({
           planId,
           userId: user.id,
@@ -39,13 +46,16 @@ export function PricingSection() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Ошибка создания платежа");
+        throw new Error(
+          data.error || "Ошибка создания платежа"
+        );
       }
 
       window.location.href = data.url;
     } catch (error) {
-      console.error("Checkout error:", error);
-      alert("Не удалось создать оплату. Попробуйте позже.");
+      console.error(error);
+
+      alert("Ошибка оплаты");
     } finally {
       setLoadingPlan(null);
     }
@@ -57,7 +67,7 @@ export function PricingSection() {
         <h2 className="text-4xl font-black">Тарифы</h2>
 
         <p className="mt-2 text-gray-400">
-          Выберите тариф и подключите больше возможностей для генерации контента.
+          Выберите подходящий тариф для генерации AI-контента.
         </p>
       </div>
 
@@ -67,6 +77,7 @@ export function PricingSection() {
 
           <div className="relative">
             <p className="text-sm text-gray-400">Free</p>
+
             <h3 className="mt-2 text-3xl font-black">0 ₽</h3>
 
             <div className="mt-4 space-y-2 text-gray-300">
@@ -75,10 +86,7 @@ export function PricingSection() {
               <p>• Базовые стили</p>
             </div>
 
-            <button
-              disabled
-              className="mt-6 w-full cursor-default rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-bold text-gray-300"
-            >
+            <button className="mt-6 w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-bold transition hover:bg-white/10">
               Текущий план
             </button>
           </div>
@@ -93,7 +101,10 @@ export function PricingSection() {
             </div>
 
             <p className="text-sm text-cyan-200">Creator</p>
-            <h3 className="mt-2 text-3xl font-black">299 ₽/мес</h3>
+
+            <h3 className="mt-2 text-3xl font-black">
+              299 ₽
+            </h3>
 
             <div className="mt-4 space-y-2 text-gray-200">
               <p>• 50 генераций в день</p>
@@ -104,9 +115,11 @@ export function PricingSection() {
             <button
               onClick={() => handleCheckout("creator")}
               disabled={loadingPlan === "creator"}
-              className="mt-6 w-full rounded-2xl bg-gradient-to-r from-cyan-300 to-violet-300 px-5 py-3 font-black text-black transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
+              className="mt-6 w-full rounded-2xl bg-gradient-to-r from-cyan-300 to-violet-300 px-5 py-3 font-black text-black transition hover:scale-[1.02] disabled:opacity-50"
             >
-              {loadingPlan === "creator" ? "Создаём оплату..." : "Улучшить план"}
+              {loadingPlan === "creator"
+                ? "Переход..."
+                : "Улучшить план"}
             </button>
           </div>
         </div>
@@ -115,8 +128,13 @@ export function PricingSection() {
           <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-violet-300/20 opacity-0 blur-3xl transition group-hover:opacity-100" />
 
           <div className="relative">
-            <p className="text-sm text-violet-200">SMM Pro</p>
-            <h3 className="mt-2 text-3xl font-black">990 ₽/мес</h3>
+            <p className="text-sm text-violet-200">
+              SMM Pro
+            </p>
+
+            <h3 className="mt-2 text-3xl font-black">
+              990 ₽
+            </h3>
 
             <div className="mt-4 space-y-2 text-gray-300">
               <p>• Безлимит генераций</p>
@@ -127,9 +145,11 @@ export function PricingSection() {
             <button
               onClick={() => handleCheckout("smm_pro")}
               disabled={loadingPlan === "smm_pro"}
-              className="mt-6 w-full rounded-2xl border border-violet-300/20 bg-violet-300/10 px-5 py-3 font-bold text-violet-100 transition hover:bg-violet-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-6 w-full rounded-2xl border border-violet-300/20 bg-violet-300/10 px-5 py-3 font-bold text-violet-100 transition hover:bg-violet-300/20 disabled:opacity-50"
             >
-              {loadingPlan === "smm_pro" ? "Создаём оплату..." : "Для команды"}
+              {loadingPlan === "smm_pro"
+                ? "Переход..."
+                : "Для команды"}
             </button>
           </div>
         </div>

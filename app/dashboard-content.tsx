@@ -768,7 +768,7 @@ async function changeUserPlan(
 
           <HistorySection history={history} onClear={clearCloudHistory} />
 
-          <PricingSection />
+          <PricingSection onAuthRequired={() => setIsAuthModalOpen(true)} />
 
           <SettingsSection
             user={user}
