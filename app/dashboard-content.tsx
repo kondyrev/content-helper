@@ -439,13 +439,18 @@ ${result}
   }
 
   async function loginWithGoogle() {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: window.location.origin,
-      },
-    });
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}/dashboard`,
+    },
+  });
+
+  if (error) {
+    console.error("Google login error:", error);
+    showToast("Не удалось войти через Google", "error");
   }
+}
 
   async function loginWithEmail(
     email: string,
@@ -739,7 +744,11 @@ ${result}
             )}
           </section>
 
-          <HistorySection history={history} onClear={clearCloudHistory} />
+          <HistorySection
+            history={history}
+            onClear={clearCloudHistory}
+            onOpenItem={openHistoryItem}
+          />
 
           <PricingSection onAuthRequired={() => setIsAuthModalOpen(true)} />
 
