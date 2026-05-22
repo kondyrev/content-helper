@@ -39,20 +39,16 @@ export function Sidebar({
     <div className="flex h-full flex-col">
       <div>
         <div className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-violet-300 to-cyan-300 text-xl font-black text-black">
-              AI
-            </div>
+          <div>
+            <h1 className="text-3xl font-black leading-none">
+              Контент
+              <br />
+              Помощник
+            </h1>
 
-            <div>
-              <h1 className="text-lg font-black">
-                КонтентПомощник
-              </h1>
-
-              <p className="text-sm text-gray-400">
-                AI SaaS Dashboard
-              </p>
-            </div>
+            <p className="mt-3 text-sm text-gray-400">
+              AI SaaS Dashboard
+            </p>
           </div>
         </div>
 
