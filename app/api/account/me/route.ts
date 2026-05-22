@@ -195,13 +195,7 @@ export async function GET(request: Request) {
       subscriptions = subscriptionsData || [];
     }
 
-    console.log("ACCOUNT DEBUG", {
-      userId: user.id,
-      email: user.email,
-      subscription,
-      plan,
-    });
-
+    
     return NextResponse.json({
       user: {
         id: user.id,
