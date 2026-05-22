@@ -107,11 +107,12 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [copiedTitle, setCopiedTitle] = useState("");
   const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isAccountLoading, setIsAccountLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [currentPlan, setCurrentPlan] = useState<Plan | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [todayCount, setTodayCount] = useState(0);
-  const [guestCount, setGuestCount] = useState(0);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [profiles, setProfiles] = useState<AdminProfile[]>([]);
   const [subscriptions, setSubscriptions] = useState<AdminSubscription[]>([]);
@@ -119,15 +120,19 @@ export default function Home() {
 
   const supabase = useMemo(() => createClient(), []);
 
-  const guestLimit = 3;
+  const guestCount = 0;
+  const guestLimit = 0;
   const dailyLimit = currentPlan?.daily_limit ?? 5;
   const isAdmin = profile?.role === "admin";
 
-  const limitReached = isAdmin
-    ? false
-    : user
-      ? todayCount >= dailyLimit
-      : guestCount >= guestLimit;
+  const limitReached =
+    !isAuthReady || isAccountLoading
+      ? true
+      : isAdmin
+        ? false
+        : user
+          ? todayCount >= dailyLimit
+          : false;
 
   const resultBlocks = result ? parseResult(result) : [];
 
@@ -141,16 +146,15 @@ export default function Home() {
 
   async function handleAuthenticatedUser(currentUser: User) {
     try {
-      setUser(currentUser);
+      setIsAccountLoading(true);
 
       const account = await ensureUserAccount(supabase, currentUser);
-
-      setProfile(account.profile);
-      setCurrentPlan(account.plan);
-
       const historyData = await loadHistoryFromCloud(supabase, currentUser.id);
       const count = await loadTodayCountFromCloud(supabase, currentUser.id);
 
+      setUser(currentUser);
+      setProfile(account.profile);
+      setCurrentPlan(account.plan);
       setHistory(historyData as HistoryItem[]);
       setTodayCount(count);
 
@@ -170,9 +174,12 @@ export default function Home() {
       resetUserState();
 
       showToast(
-        "Не удалось загрузить профиль пользователя. Проверь Supabase/RLS.",
+        "Не удалось загрузить профиль пользователя. Попробуйте обновить страницу.",
         "error"
       );
+    } finally {
+      setIsAuthReady(true);
+      setIsAccountLoading(false);
     }
   }
 
@@ -187,23 +194,40 @@ export default function Home() {
   }
 
   useEffect(() => {
+    let isMounted = true;
+
     const url = new URL(window.location.href);
 
     if (url.searchParams.has("code")) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
 
-    const savedGuestCount = localStorage.getItem("guest-generation-count");
-
-    if (savedGuestCount) {
-      setGuestCount(Number(savedGuestCount));
-    }
-
     async function initUser() {
-      const { data } = await supabase.auth.getUser();
+      try {
+        setIsAuthReady(false);
+        setIsAccountLoading(true);
 
-      if (data.user) {
-        await handleAuthenticatedUser(data.user);
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!isMounted) return;
+
+        if (session?.user) {
+          await handleAuthenticatedUser(session.user);
+        } else {
+          resetUserState();
+          setIsAuthReady(true);
+          setIsAccountLoading(false);
+        }
+      } catch (error) {
+        console.error("Ошибка инициализации авторизации:", error);
+
+        if (!isMounted) return;
+
+        resetUserState();
+        setIsAuthReady(true);
+        setIsAccountLoading(false);
       }
     }
 
@@ -213,25 +237,28 @@ export default function Home() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
-        setTimeout(() => {
-          handleAuthenticatedUser(session.user);
-        }, 0);
+        void handleAuthenticatedUser(session.user);
       } else {
         resetUserState();
+        setIsAuthReady(true);
+        setIsAccountLoading(false);
       }
     });
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, [supabase]);
 
   useEffect(() => {
     async function refreshAccount() {
-      const { data } = await supabase.auth.getUser();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      if (data.user) {
-        await handleAuthenticatedUser(data.user);
+      if (session?.user) {
+        await handleAuthenticatedUser(session.user);
       }
     }
 
@@ -252,13 +279,19 @@ export default function Home() {
   }
 
   async function generateContent() {
+    if (!isAuthReady || isAccountLoading) {
+      showToast("Загружаем аккаунт. Попробуйте ещё раз через секунду.", "info");
+      return;
+    }
+
+    if (!user) {
+      setIsAuthModalOpen(true);
+      showToast("Войдите в аккаунт, чтобы получить 5 бесплатных генераций", "info");
+      return;
+    }
+
     if (limitReached) {
-      showToast(
-        user
-          ? "Дневной лимит генераций закончился"
-          : "Войдите через Google для продолжения",
-        "error"
-      );
+      showToast("Дневной лимит генераций закончился", "error");
       return;
     }
 
@@ -270,11 +303,17 @@ export default function Home() {
         data: { session },
       } = await supabase.auth.getSession();
 
+      if (!session?.access_token) {
+        setIsAuthModalOpen(true);
+        showToast("Сессия не найдена. Войдите ещё раз.", "error");
+        return;
+      }
+
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session?.access_token}`,
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           topic,
@@ -286,7 +325,7 @@ export default function Home() {
       const data = await response.json();
 
       if (!response.ok) {
-        setResult(data.error || "Ошибка генерации");
+        setResult("");
         showToast(data.error || "Ошибка генерации", "error");
 
         if (typeof data.usedToday === "number") {
@@ -302,20 +341,13 @@ export default function Home() {
         setTodayCount(data.usedToday);
       }
 
-      if (!user) {
-        const newGuestCount = guestCount + 1;
-        setGuestCount(newGuestCount);
-        localStorage.setItem("guest-generation-count", String(newGuestCount));
-      }
-
-      if (user) {
-        await loadHistory(user.id);
-      }
+      await loadHistory(user.id);
 
       showToast("Контент успешно сгенерирован", "success");
     } catch (error) {
       console.error(error);
-      showToast("Ошибка соединения", "error");
+      setResult("");
+      showToast("Ошибка соединения. Попробуйте ещё раз.", "error");
     } finally {
       setIsLoading(false);
     }
@@ -469,6 +501,10 @@ ${result}
       return;
     }
 
+    if (response.data.user) {
+      await handleAuthenticatedUser(response.data.user);
+    }
+
     showToast(
       mode === "login"
         ? "Вы вошли в аккаунт"
@@ -598,7 +634,11 @@ ${result}
               </div>
             </div>
 
-            {user ? (
+            {!isAuthReady || isAccountLoading ? (
+              <div className="rounded-full border border-white/10 bg-white/5 px-5 py-2 text-sm text-gray-400">
+                Загрузка...
+              </div>
+            ) : user ? (
               <div className="flex items-center gap-3">
                 <div className="hidden text-right sm:block">
                   <p className="max-w-[220px] truncate text-sm font-bold text-gray-200">
@@ -642,23 +682,31 @@ ${result}
             <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
               <p className="text-sm text-gray-400">Статус</p>
               <p className="mt-2 text-2xl font-black">
-                {user ? "В облаке" : "Гость"}
+                {!isAuthReady || isAccountLoading
+                  ? "Загрузка"
+                  : user
+                    ? "В облаке"
+                    : "Нужен вход"}
               </p>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
               <p className="text-sm text-gray-400">История</p>
-              <p className="mt-2 text-2xl font-black">{history.length}/10</p>
+              <p className="mt-2 text-2xl font-black">
+                {!isAuthReady || isAccountLoading ? "..." : `${history.length}/10`}
+              </p>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
               <p className="text-sm text-gray-400">Лимит</p>
               <p className="mt-2 text-2xl font-black">
-                {isAdmin
-                  ? "∞"
-                  : user
-                    ? `${todayCount}/${dailyLimit}`
-                    : `${guestCount}/${guestLimit}`}
+                {!isAuthReady || isAccountLoading
+                  ? "..."
+                  : isAdmin
+                    ? "∞"
+                    : user
+                      ? `${todayCount}/${dailyLimit}`
+                      : "Войдите"}
               </p>
             </div>
           </section>
