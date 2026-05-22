@@ -224,12 +224,7 @@ export default function Home() {
   }
 
   useEffect(() => {
-    const url = new URL(window.location.href);
-
-    if (url.searchParams.has("code")) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-
+    
     void loadAccount();
 
     const {
@@ -443,6 +438,9 @@ ${result}
     provider: "google",
     options: {
       redirectTo: "https://content-helper.ru/dashboard",
+      queryParams: {
+        prompt: "select_account",
+      },
     },
   });
 
