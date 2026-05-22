@@ -31,15 +31,10 @@ export default function LandingPage() {
             <div className="text-2xl font-black leading-none">
               Контент<span className="text-violet-400">Помощник</span>
             </div>
-            <p className="mt-1 text-xs text-gray-400">AI SaaS Dashboard</p>
+            <p className="mt-1 text-xs text-gray-400">AI SaaS Project</p>
           </div>
 
-          <a
-            href="/dashboard"
-            className="rounded-full border border-white/10 bg-white px-5 py-2 text-sm font-black text-black transition hover:scale-[1.03]"
-          >
-            Войти
-          </a>
+          
         </header>
 
         <section className="grid min-h-[72vh] items-center gap-10 lg:grid-cols-[1fr_0.9fr]">
