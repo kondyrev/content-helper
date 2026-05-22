@@ -1,9 +1,5 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { createClient } from "@/utils/supabase";
-import { AuthModal } from "@/components/AuthModal";
-
 const features = [
   ["🎬", "VK Клипы", "Описание, хештеги, CTA и первый комментарий под короткие видео."],
   ["✍️", "Telegram", "Посты, анонсы, вовлекающие тексты и идеи подачи."],
@@ -25,37 +21,6 @@ const steps = [
 ];
 
 export default function LandingPage() {
-  const supabase = useMemo(() => createClient(), []);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-
-  async function loginWithGoogle() {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/dashboard`,
-      },
-    });
-  }
-
-  async function loginWithEmail(
-    email: string,
-    password: string,
-    mode: "login" | "register"
-  ) {
-    const response =
-      mode === "login"
-        ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password });
-
-    if (response.error) {
-      alert(response.error.message);
-      return;
-    }
-
-    setIsAuthModalOpen(false);
-    window.location.href = "/dashboard";
-  }
-
   return (
     <main className="min-h-screen overflow-hidden bg-[#070b16] text-white">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(139,92,246,0.35),transparent_30%),radial-gradient(circle_at_85%_5%,rgba(34,211,238,0.22),transparent_28%),radial-gradient(circle_at_50%_100%,rgba(168,85,247,0.15),transparent_35%)]" />
@@ -69,12 +34,12 @@ export default function LandingPage() {
             <p className="mt-1 text-xs text-gray-400">AI SaaS Dashboard</p>
           </div>
 
-          <button
-            onClick={() => setIsAuthModalOpen(true)}
+          <a
+            href="/dashboard"
             className="rounded-full border border-white/10 bg-white px-5 py-2 text-sm font-black text-black transition hover:scale-[1.03]"
           >
             Войти
-          </button>
+          </a>
         </header>
 
         <section className="grid min-h-[72vh] items-center gap-10 lg:grid-cols-[1fr_0.9fr]">
@@ -97,14 +62,12 @@ export default function LandingPage() {
             </p>
 
             <div className="mt-9 flex flex-wrap gap-4">
-              <button
-                onClick={() => {
-                    window.location.href = "/dashboard";
-                    }}
+              <a
+                href="/dashboard"
                 className="rounded-2xl bg-gradient-to-r from-violet-300 to-cyan-300 px-8 py-4 font-black text-black shadow-2xl shadow-cyan-300/10 transition hover:scale-[1.03]"
               >
                 Попробовать бесплатно
-              </button>
+              </a>
 
               <a
                 href="#example"
@@ -116,13 +79,13 @@ export default function LandingPage() {
 
             <div className="mt-8 flex flex-wrap gap-3 text-sm text-gray-400">
               <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2">
-                3 демо-генерации
-              </span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2">
-                5 генераций после входа
+                5 бесплатных генераций в день
               </span>
               <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2">
                 История в облаке
+              </span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2">
+                Тарифы для авторов и SMM
               </span>
             </div>
           </div>
@@ -275,58 +238,50 @@ export default function LandingPage() {
 
         <section className="mt-24 rounded-[44px] border border-cyan-300/20 bg-gradient-to-r from-violet-400/10 to-cyan-300/10 p-10 text-center backdrop-blur-xl">
           <h2 className="text-4xl font-black md:text-5xl">
-            Начни с бесплатных генераций
+            Начни бесплатно
           </h2>
 
           <p className="mx-auto mt-4 max-w-2xl text-gray-300">
-            Проверь, как сервис оформит твой контент. Без сложной настройки и
-            лишних шагов.
+            Войди в личный кабинет и получи 5 бесплатных генераций в день.
+            Без сложной настройки и лишних шагов.
           </p>
 
-          <button
-            onClick={() => {
-                window.location.href = "/dashboard";
-                }}
-            className="mt-8 rounded-2xl bg-gradient-to-r from-violet-300 to-cyan-300 px-9 py-4 font-black text-black transition hover:scale-[1.03]"
+          <a
+            href="/dashboard"
+            className="mt-8 inline-flex rounded-2xl bg-gradient-to-r from-violet-300 to-cyan-300 px-9 py-4 font-black text-black transition hover:scale-[1.03]"
           >
-            Попробовать бесплатно
-          </button>
+            Перейти в кабинет
+          </a>
         </section>
 
         <footer className="mt-16 border-t border-white/10 py-8 text-sm text-gray-500">
-                <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-500">
-                  <a href="/oferta" className="hover:text-white transition">
-                    Оферта
-                  </a>
+          <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-500">
+            <a href="/oferta" className="transition hover:text-white">
+              Оферта
+            </a>
 
-                  <a href="/privacy" className="hover:text-white transition">
-                    Политика конфиденциальности
-                  </a>
+            <a href="/privacy" className="transition hover:text-white">
+              Политика конфиденциальности
+            </a>
 
-                  <a href="/contacts" className="hover:text-white transition">
-                    Контакты
-                  </a>
-                  
-                  <a href="/refund" className="hover:text-white transition">
-                    Условия возврата
-                  </a>
+            <a href="/contacts" className="transition hover:text-white">
+              Контакты
+            </a>
 
-                  <a href="/payment-info" className="hover:text-white transition">
-                    Информация об оплате и оказании услуг
-                  </a>
+            <a href="/refund" className="transition hover:text-white">
+              Условия возврата
+            </a>
 
-                </div>
-                
-          © 2026 КонтентПомощник. AI-инструмент для оформления публикаций.
+            <a href="/payment-info" className="transition hover:text-white">
+              Информация об оплате и оказании услуг
+            </a>
+          </div>
+
+          <p className="mt-4">
+            © 2026 КонтентПомощник. AI-инструмент для оформления публикаций.
+          </p>
         </footer>
       </div>
-
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onGoogleLogin={loginWithGoogle}
-        onEmailAuth={loginWithEmail}
-      />
     </main>
   );
 }

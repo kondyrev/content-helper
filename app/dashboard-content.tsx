@@ -167,6 +167,7 @@ export default function Home() {
     setProfiles([]);
     setSubscriptions([]);
     setIsAccountLoading(false);
+    setResult("");
   }
 
   function applyAccountData(account: AccountResponse) {
