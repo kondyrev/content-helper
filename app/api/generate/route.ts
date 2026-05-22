@@ -2,6 +2,17 @@ import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 
+function startOfTodayIso() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date.toISOString();
+}
+
+function isSubscriptionExpired(currentPeriodEnd: string | null) {
+  if (!currentPeriodEnd) return false;
+  return new Date(currentPeriodEnd) < new Date();
+}
+
 export async function POST(request: Request) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -14,7 +25,7 @@ export async function POST(request: Request) {
     }
 
     const authHeader = request.headers.get("authorization");
-    const token = authHeader?.replace("Bearer ", "");
+    const token = authHeader?.replace("Bearer ", "").trim();
 
     if (!token) {
       return NextResponse.json(
@@ -45,37 +56,96 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: subscription } = await supabaseServer
+    let { data: subscription } = await supabaseServer
       .from("subscriptions")
-      .select("plan_id")
+      .select("plan_id, status, current_period_end")
       .eq("user_id", user.id)
       .single();
 
-    const planId = subscription?.plan_id || "free";
+    if (!subscription) {
+      const { data: insertedSubscription, error: insertSubscriptionError } =
+        await supabaseServer
+          .from("subscriptions")
+          .insert({
+            user_id: user.id,
+            plan_id: "free",
+            status: "active",
+            current_period_end: null,
+            updated_at: new Date().toISOString(),
+          })
+          .select("plan_id, status, current_period_end")
+          .single();
+
+      if (insertSubscriptionError || !insertedSubscription) {
+        console.error("Subscription bootstrap error:", insertSubscriptionError);
+
+        return NextResponse.json(
+          { error: "Не удалось загрузить тариф" },
+          { status: 500 }
+        );
+      }
+
+      subscription = insertedSubscription;
+    }
+
+    const expired =
+      subscription.plan_id !== "free" &&
+      isSubscriptionExpired(subscription.current_period_end);
+
+    if (expired) {
+      const { data: downgradedSubscription, error: downgradeError } =
+        await supabaseServer
+          .from("subscriptions")
+          .update({
+            plan_id: "free",
+            status: "active",
+            current_period_end: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", user.id)
+          .select("plan_id, status, current_period_end")
+          .single();
+
+      if (downgradeError || !downgradedSubscription) {
+        console.error("Subscription downgrade error:", downgradeError);
+
+        return NextResponse.json(
+          { error: "Не удалось обновить тариф" },
+          { status: 500 }
+        );
+      }
+
+      subscription = downgradedSubscription;
+    }
+
+    const planId = subscription.plan_id || "free";
 
     const { data: plan, error: planError } = await supabaseServer
       .from("plans")
-      .select("id, daily_limit")
+      .select("id, name, daily_limit")
       .eq("id", planId)
       .single();
 
     if (planError || !plan) {
+      console.error("Plan load error:", planError);
+
       return NextResponse.json(
         { error: "Тариф не найден" },
         { status: 500 }
       );
     }
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const todayStart = startOfTodayIso();
 
     const { count, error: countError } = await supabaseServer
       .from("generations")
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id)
-      .gte("created_at", todayStart.toISOString());
+      .gte("created_at", todayStart);
 
     if (countError) {
+      console.error("Count generation error:", countError);
+
       return NextResponse.json(
         { error: "Не удалось проверить лимит генераций" },
         { status: 500 }
@@ -88,11 +158,13 @@ export async function POST(request: Request) {
     if (usedToday >= dailyLimit) {
       return NextResponse.json(
         {
-          error: `Лимит генераций на сегодня исчерпан. Ваш тариф: ${planId}, лимит: ${dailyLimit} в день.`,
+          error: `Лимит генераций на сегодня исчерпан. Ваш тариф: ${plan.name}, лимит: ${dailyLimit} в день.`,
           limitReached: true,
           usedToday,
           dailyLimit,
-          planId,
+          planId: plan.id,
+          planName: plan.name,
+          subscriptionEnd: subscription.current_period_end,
         },
         { status: 403 }
       );
@@ -157,7 +229,9 @@ ${style || "универсальный"}
       result: response.output_text,
       usedToday: usedToday + 1,
       dailyLimit,
-      planId,
+      planId: plan.id,
+      planName: plan.name,
+      subscriptionEnd: subscription.current_period_end,
     });
   } catch (error) {
     console.error("Ошибка генерации:", error);

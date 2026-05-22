@@ -7,6 +7,11 @@ function startOfTodayIso() {
   return date.toISOString();
 }
 
+function isSubscriptionExpired(currentPeriodEnd: string | null) {
+  if (!currentPeriodEnd) return false;
+  return new Date(currentPeriodEnd) < new Date();
+}
+
 export async function GET(request: Request) {
   try {
     const authHeader = request.headers.get("authorization");
@@ -45,6 +50,7 @@ export async function GET(request: Request) {
 
       if (insertProfileError || !insertedProfile) {
         console.error("Profile bootstrap error:", insertProfileError);
+
         return NextResponse.json(
           { error: "Profile bootstrap failed" },
           { status: 500 }
@@ -56,7 +62,7 @@ export async function GET(request: Request) {
 
     let { data: subscription, error: subscriptionError } = await supabaseServer
       .from("subscriptions")
-      .select("user_id, plan_id, status")
+      .select("user_id, plan_id, status, current_period_end")
       .eq("user_id", user.id)
       .single();
 
@@ -68,12 +74,15 @@ export async function GET(request: Request) {
             user_id: user.id,
             plan_id: "free",
             status: "active",
+            current_period_end: null,
+            updated_at: new Date().toISOString(),
           })
-          .select("user_id, plan_id, status")
+          .select("user_id, plan_id, status, current_period_end")
           .single();
 
       if (insertSubscriptionError || !insertedSubscription) {
         console.error("Subscription bootstrap error:", insertSubscriptionError);
+
         return NextResponse.json(
           { error: "Subscription bootstrap failed" },
           { status: 500 }
@@ -81,6 +90,36 @@ export async function GET(request: Request) {
       }
 
       subscription = insertedSubscription;
+    }
+
+    const expired =
+      subscription.plan_id !== "free" &&
+      isSubscriptionExpired(subscription.current_period_end);
+
+    if (expired) {
+      const { data: downgradedSubscription, error: downgradeError } =
+        await supabaseServer
+          .from("subscriptions")
+          .update({
+            plan_id: "free",
+            status: "active",
+            current_period_end: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", user.id)
+          .select("user_id, plan_id, status, current_period_end")
+          .single();
+
+      if (downgradeError || !downgradedSubscription) {
+        console.error("Subscription downgrade error:", downgradeError);
+
+        return NextResponse.json(
+          { error: "Subscription downgrade failed" },
+          { status: 500 }
+        );
+      }
+
+      subscription = downgradedSubscription;
     }
 
     const { data: plan, error: planError } = await supabaseServer
@@ -91,18 +130,27 @@ export async function GET(request: Request) {
 
     if (planError || !plan) {
       console.error("Plan load error:", planError);
+
       return NextResponse.json({ error: "Plan not found" }, { status: 500 });
     }
+
+    const historyLimit =
+      subscription.plan_id === "smm_pro"
+        ? 200
+        : subscription.plan_id === "creator"
+          ? 50
+          : 10;
 
     const { data: history, error: historyError } = await supabaseServer
       .from("generations")
       .select("id, user_id, topic, platform, style, result, created_at")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
-      .limit(10);
+      .limit(historyLimit);
 
     if (historyError) {
       console.error("History load error:", historyError);
+
       return NextResponse.json(
         { error: "History load failed" },
         { status: 500 }
@@ -117,6 +165,7 @@ export async function GET(request: Request) {
 
     if (countError) {
       console.error("Today count load error:", countError);
+
       return NextResponse.json(
         { error: "Usage load failed" },
         { status: 500 }
@@ -135,7 +184,7 @@ export async function GET(request: Request) {
       const { data: subscriptionsData } = await supabaseServer
         .from("subscriptions")
         .select(
-          "user_id, plan_id, status, plans(id, name, daily_limit, price_month)"
+          "user_id, plan_id, status, current_period_end, plans(id, name, daily_limit, price_month)"
         );
 
       profiles = profilesData || [];
@@ -151,6 +200,7 @@ export async function GET(request: Request) {
       subscription,
       plan,
       history: history || [],
+      historyLimit,
       todayCount: count || 0,
       profiles,
       subscriptions,

@@ -1,18 +1,23 @@
-type MenuItem = {
-  label: string;
-  id: string;
-};
-
 type SidebarProps = {
-  menuItems: MenuItem[];
-  user: unknown;
+  menuItems: {
+    label: string;
+    id: string;
+  }[];
+
+  user: {
+    email?: string;
+  } | null;
+
   todayCount: number;
   dailyLimit: number;
-  guestCount: number;
-  guestLimit: number;
+
   onNavigate: (id: string) => void;
+
   planName: string;
+
   isAdmin: boolean;
+
+  subscriptionEnd: string | null;
 };
 
 export function Sidebar({
@@ -20,61 +25,107 @@ export function Sidebar({
   user,
   todayCount,
   dailyLimit,
-  guestCount,
-  guestLimit,
   onNavigate,
   planName,
   isAdmin,
+  subscriptionEnd,
 }: SidebarProps) {
+  const usagePercent = Math.min(
+    (todayCount / Math.max(dailyLimit, 1)) * 100,
+    100
+  );
+
   return (
-    <>
-      <div className="mb-10">
-        <h1 className="text-3xl font-black leading-[0.9]">
-          <span className="block">Контент</span>
+    <div className="flex h-full flex-col">
+      <div>
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-violet-300 to-cyan-300 text-xl font-black text-black">
+              AI
+            </div>
 
-          <span className="block text-violet-400">
-            Помощник
-          </span>
-        </h1>
+            <div>
+              <h1 className="text-lg font-black">
+                КонтентПомощник
+              </h1>
 
-        <p className="mt-2 text-sm text-gray-400">
-          AI SaaS Dashboard
-        </p>
+              <p className="text-sm text-gray-400">
+                AI SaaS Dashboard
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <nav className="mt-6 space-y-2">
+          {menuItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => onNavigate(item.id)}
+              className="w-full rounded-2xl border border-transparent bg-white/5 px-4 py-3 text-left text-sm font-medium text-gray-300 transition hover:border-white/10 hover:bg-white/10 hover:text-white"
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
       </div>
 
-      <nav className="space-y-2">
-        {menuItems.map((item, index) => (
-          <button
-            key={item.id}
-            onClick={() => onNavigate(item.id)}
-            className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition ${
-              index === 0
-                ? "bg-white/10 font-bold"
-                : "text-gray-300 hover:bg-white/10"
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
+      <div className="mt-auto">
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-400">
+                Текущий тариф
+              </p>
 
-      <div className="mt-10 rounded-3xl border border-violet-400/20 bg-violet-400/10 p-5">
-        <p className="text-sm text-violet-200">
-          {isAdmin ? "Администратор" : planName}
-        </p>
+              <h3 className="mt-1 text-xl font-black">
+                {isAdmin ? "Admin" : planName}
+              </h3>
+            </div>
 
-        <p className="mt-2 text-3xl font-black">
-          {isAdmin
-            ? "∞"
-            : user
-            ? `${todayCount}/${dailyLimit}`
-            : `${guestCount}/${guestLimit}`}
-        </p>
+            <div className="rounded-2xl bg-gradient-to-r from-violet-300 to-cyan-300 px-3 py-2 text-sm font-black text-black">
+              {isAdmin ? "∞" : `${todayCount}/${dailyLimit}`}
+            </div>
+          </div>
 
-        <p className="mt-2 text-sm text-gray-300">
-          Генераций сегодня
-        </p>
+          {!isAdmin && (
+            <>
+              <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-violet-300 to-cyan-300 transition-all duration-500"
+                  style={{
+                    width: `${usagePercent}%`,
+                  }}
+                />
+              </div>
+
+              <div className="mt-3 flex items-center justify-between text-xs text-gray-400">
+                <span>Генераций сегодня</span>
+
+                <span>
+                  {todayCount} / {dailyLimit}
+                </span>
+              </div>
+
+              {subscriptionEnd && (
+                <p className="mt-3 text-xs text-violet-200">
+                  Подписка до{" "}
+                  {new Date(subscriptionEnd).toLocaleDateString(
+                    "ru-RU"
+                  )}
+                </p>
+              )}
+            </>
+          )}
+
+          {user?.email && (
+            <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-3">
+              <p className="truncate text-sm text-gray-300">
+                {user.email}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
-    </>
+    </div>
   );
 }

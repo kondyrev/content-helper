@@ -35,6 +35,7 @@ type AdminSubscription = {
   user_id: string;
   plan_id: string;
   status: string;
+  current_period_end: string | null;
   plans: {
     id: string;
     name: string;
@@ -71,8 +72,15 @@ type AccountResponse = {
     email: string | null;
   };
   profile: Profile;
+  subscription: {
+    user_id: string;
+    plan_id: string;
+    status: string;
+    current_period_end: string | null;
+  };
   plan: Plan;
   history: HistoryItem[];
+  historyLimit: number;
   todayCount: number;
   profiles: AdminProfile[];
   subscriptions: AdminSubscription[];
@@ -124,11 +132,13 @@ export default function Home() {
   const [style, setStyle] = useState("Дружелюбный");
   const [result, setResult] = useState("");
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyLimit, setHistoryLimit] = useState(10);
   const [isLoading, setIsLoading] = useState(false);
   const [copiedTitle, setCopiedTitle] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [currentPlan, setCurrentPlan] = useState<Plan | null>(null);
+  const [subscriptionEnd, setSubscriptionEnd] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [todayCount, setTodayCount] = useState(0);
   const [isAccountLoading, setIsAccountLoading] = useState(true);
@@ -139,8 +149,6 @@ export default function Home() {
 
   const supabase = useMemo(() => createClient(), []);
 
-  const guestCount = 0;
-  const guestLimit = 0;
   const dailyLimit = currentPlan?.daily_limit ?? 5;
   const isAdmin = profile?.role === "admin";
 
@@ -161,9 +169,11 @@ export default function Home() {
   function resetUserState() {
     setUser(null);
     setHistory([]);
+    setHistoryLimit(10);
     setTodayCount(0);
     setProfile(null);
     setCurrentPlan(null);
+    setSubscriptionEnd(null);
     setProfiles([]);
     setSubscriptions([]);
     setIsAccountLoading(false);
@@ -174,7 +184,9 @@ export default function Home() {
     setUser(toUser(account.user));
     setProfile(account.profile);
     setCurrentPlan(account.plan);
+    setSubscriptionEnd(account.subscription?.current_period_end || null);
     setHistory(account.history || []);
+    setHistoryLimit(account.historyLimit || 10);
     setTodayCount(account.todayCount || 0);
     setProfiles(account.profiles || []);
     setSubscriptions(account.subscriptions || []);
@@ -224,7 +236,6 @@ export default function Home() {
   }
 
   useEffect(() => {
-    
     void loadAccount();
 
     const {
@@ -301,6 +312,10 @@ export default function Home() {
           setTodayCount(data.usedToday);
         }
 
+        if (typeof data.subscriptionEnd !== "undefined") {
+          setSubscriptionEnd(data.subscriptionEnd);
+        }
+
         return;
       }
 
@@ -308,6 +323,10 @@ export default function Home() {
 
       if (typeof data.usedToday === "number") {
         setTodayCount(data.usedToday);
+      }
+
+      if (typeof data.subscriptionEnd !== "undefined") {
+        setSubscriptionEnd(data.subscriptionEnd);
       }
 
       await loadAccount({ silent: true });
@@ -434,21 +453,21 @@ ${result}
   }
 
   async function loginWithGoogle() {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: "https://content-helper.ru/dashboard",
-      queryParams: {
-        prompt: "select_account",
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: "https://content-helper.ru/dashboard",
+        queryParams: {
+          prompt: "select_account",
+        },
       },
-    },
-  });
+    });
 
-  if (error) {
-    console.error("Google login error:", error);
-    showToast("Не удалось войти через Google", "error");
+    if (error) {
+      console.error("Google login error:", error);
+      showToast("Не удалось войти через Google", "error");
+    }
   }
-}
 
   async function loginWithEmail(
     email: string,
@@ -472,6 +491,7 @@ ${result}
     }
 
     setIsAuthModalOpen(false);
+
     showToast(
       mode === "login"
         ? "Вы вошли в аккаунт"
@@ -483,18 +503,20 @@ ${result}
   }
 
   async function logout() {
-    setIsMobileMenuOpen(false);
-    setIsAuthModalOpen(false);
-    resetUserState();
-    showToast("Вы вышли из аккаунта", "info");
-
     try {
-      await Promise.race([
-        supabase.auth.signOut(),
-        new Promise((resolve) => window.setTimeout(resolve, 3000)),
-      ]);
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        console.error("Ошибка выхода:", error);
+        showToast("Не удалось выйти из аккаунта", "error");
+        return;
+      }
+
+      resetUserState();
+      showToast("Вы вышли из аккаунта", "info");
     } catch (error) {
       console.error("Ошибка выхода:", error);
+      showToast("Не удалось выйти из аккаунта", "error");
     }
   }
 
@@ -551,11 +573,10 @@ ${result}
               user={user}
               todayCount={todayCount}
               dailyLimit={dailyLimit}
-              guestCount={guestCount}
-              guestLimit={guestLimit}
               onNavigate={scrollToSection}
               planName={currentPlan?.name || "Free"}
               isAdmin={isAdmin}
+              subscriptionEnd={subscriptionEnd}
             />
           </aside>
         </div>
@@ -568,11 +589,10 @@ ${result}
             user={user}
             todayCount={todayCount}
             dailyLimit={dailyLimit}
-            guestCount={guestCount}
-            guestLimit={guestLimit}
             onNavigate={scrollToSection}
             planName={currentPlan?.name || "Free"}
             isAdmin={isAdmin}
+            subscriptionEnd={subscriptionEnd}
           />
         </aside>
 
@@ -640,14 +660,18 @@ ${result}
             <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
               <p className="text-sm text-gray-400">Статус</p>
               <p className="mt-2 text-2xl font-black">
-                {isAccountLoading ? "Загрузка" : user ? "В облаке" : "Вход нужен"}
+                {isAccountLoading
+                  ? "Загрузка"
+                  : user
+                    ? "В облаке"
+                    : "Вход нужен"}
               </p>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
               <p className="text-sm text-gray-400">История</p>
               <p className="mt-2 text-2xl font-black">
-                {isAccountLoading ? "..." : `${history.length}/10`}
+                {isAccountLoading ? "..." : `${history.length}/${historyLimit}`}
               </p>
             </div>
 
@@ -756,6 +780,7 @@ ${result}
             dailyLimit={dailyLimit}
             planName={currentPlan?.name || "Free"}
             isAdmin={isAdmin}
+            subscriptionEnd={subscriptionEnd}
           />
 
           <AdminSection
