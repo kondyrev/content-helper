@@ -108,7 +108,8 @@ export default function Home() {
   const [copiedTitle, setCopiedTitle] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const [isAccountLoading, setIsAccountLoading] = useState(true);
+  const [isAccountLoading, setIsAccountLoading] = useState(false);
+  const [accountLoadError, setAccountLoadError] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [currentPlan, setCurrentPlan] = useState<Plan | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -125,14 +126,7 @@ export default function Home() {
   const dailyLimit = currentPlan?.daily_limit ?? 5;
   const isAdmin = profile?.role === "admin";
 
-  const limitReached =
-    !isAuthReady || isAccountLoading
-      ? true
-      : isAdmin
-        ? false
-        : user
-          ? todayCount >= dailyLimit
-          : false;
+  const limitReached = isAdmin ? false : user ? todayCount >= dailyLimit : false;
 
   const resultBlocks = result ? parseResult(result) : [];
 
@@ -144,23 +138,51 @@ export default function Home() {
     }, 2500);
   }
 
+  function withTimeout<T>(promise: Promise<T>, timeoutMs = 10_000): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const timeoutId = window.setTimeout(() => {
+        reject(new Error("Account loading timeout"));
+      }, timeoutMs);
+
+      promise
+        .then((value) => {
+          window.clearTimeout(timeoutId);
+          resolve(value);
+        })
+        .catch((error) => {
+          window.clearTimeout(timeoutId);
+          reject(error);
+        });
+    });
+  }
+
   async function handleAuthenticatedUser(currentUser: User) {
+    setUser(currentUser);
+    setIsAuthReady(true);
+    setIsAccountLoading(true);
+    setAccountLoadError(false);
+
     try {
-      setIsAccountLoading(true);
+      const account = await withTimeout(
+        ensureUserAccount(supabase, currentUser),
+        10_000
+      );
 
-      const account = await ensureUserAccount(supabase, currentUser);
-      const historyData = await loadHistoryFromCloud(supabase, currentUser.id);
-      const count = await loadTodayCountFromCloud(supabase, currentUser.id);
+      const [historyData, count] = await Promise.all([
+        withTimeout(loadHistoryFromCloud(supabase, currentUser.id), 10_000),
+        withTimeout(loadTodayCountFromCloud(supabase, currentUser.id), 10_000),
+      ]);
 
-      setUser(currentUser);
       setProfile(account.profile);
       setCurrentPlan(account.plan);
       setHistory(historyData as HistoryItem[]);
       setTodayCount(count);
 
       if (account.profile.role === "admin") {
-        const profilesData = await loadProfiles(supabase);
-        const subscriptionsData = await loadSubscriptions(supabase);
+        const [profilesData, subscriptionsData] = await Promise.all([
+          withTimeout(loadProfiles(supabase), 10_000),
+          withTimeout(loadSubscriptions(supabase), 10_000),
+        ]);
 
         setProfiles(profilesData as AdminProfile[]);
         setSubscriptions(subscriptionsData as unknown as AdminSubscription[]);
@@ -169,12 +191,18 @@ export default function Home() {
         setSubscriptions([]);
       }
     } catch (error) {
-      console.error("Ошибка авторизации/профиля:", error);
+      console.error("Ошибка загрузки аккаунта:", error);
 
-      resetUserState();
+      setAccountLoadError(true);
+      setProfile(null);
+      setCurrentPlan(null);
+      setHistory([]);
+      setTodayCount(0);
+      setProfiles([]);
+      setSubscriptions([]);
 
       showToast(
-        "Не удалось загрузить профиль пользователя. Попробуйте обновить страницу.",
+        "Аккаунт вошёл, но данные не загрузились. Обновите страницу или выйдите и войдите снова.",
         "error"
       );
     } finally {
@@ -191,25 +219,21 @@ export default function Home() {
     setCurrentPlan(null);
     setProfiles([]);
     setSubscriptions([]);
+    setAccountLoadError(false);
+    setIsAccountLoading(false);
   }
 
   useEffect(() => {
     let isMounted = true;
 
-    const url = new URL(window.location.href);
-
-    if (url.searchParams.has("code")) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-
     async function initUser() {
       try {
         setIsAuthReady(false);
-        setIsAccountLoading(true);
+        setIsAccountLoading(false);
 
         const {
           data: { session },
-        } = await supabase.auth.getSession();
+        } = await withTimeout(supabase.auth.getSession(), 10_000);
 
         if (!isMounted) return;
 
@@ -218,7 +242,6 @@ export default function Home() {
         } else {
           resetUserState();
           setIsAuthReady(true);
-          setIsAccountLoading(false);
         }
       } catch (error) {
         console.error("Ошибка инициализации авторизации:", error);
@@ -227,21 +250,22 @@ export default function Home() {
 
         resetUserState();
         setIsAuthReady(true);
-        setIsAccountLoading(false);
+        showToast("Не удалось проверить вход. Попробуйте обновить страницу.", "error");
       }
     }
 
-    initUser();
+    void initUser();
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
+        setUser(session.user);
+        setIsAuthReady(true);
         void handleAuthenticatedUser(session.user);
       } else {
         resetUserState();
         setIsAuthReady(true);
-        setIsAccountLoading(false);
       }
     });
 
@@ -253,11 +277,14 @@ export default function Home() {
 
   useEffect(() => {
     async function refreshAccount() {
+      if (isAccountLoading) return;
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
       if (session?.user) {
+        setUser(session.user);
         await handleAuthenticatedUser(session.user);
       }
     }
@@ -267,7 +294,7 @@ export default function Home() {
     return () => {
       window.removeEventListener("focus", refreshAccount);
     };
-  }, [supabase]);
+  }, [supabase, isAccountLoading]);
 
   async function loadHistory(userId: string) {
     try {
@@ -279,14 +306,24 @@ export default function Home() {
   }
 
   async function generateContent() {
-    if (!isAuthReady || isAccountLoading) {
-      showToast("Загружаем аккаунт. Попробуйте ещё раз через секунду.", "info");
+    if (!isAuthReady) {
+      showToast("Проверяем вход. Попробуйте ещё раз через секунду.", "info");
       return;
     }
 
     if (!user) {
       setIsAuthModalOpen(true);
       showToast("Войдите в аккаунт, чтобы получить 5 бесплатных генераций", "info");
+      return;
+    }
+
+    if (isAccountLoading) {
+      showToast("Данные аккаунта ещё загружаются. Попробуйте через секунду.", "info");
+      return;
+    }
+
+    if (accountLoadError) {
+      showToast("Данные аккаунта не загрузились. Обновите страницу или войдите заново.", "error");
       return;
     }
 
@@ -634,11 +671,7 @@ ${result}
               </div>
             </div>
 
-            {!isAuthReady || isAccountLoading ? (
-              <div className="rounded-full border border-white/10 bg-white/5 px-5 py-2 text-sm text-gray-400">
-                Загрузка...
-              </div>
-            ) : user ? (
+            {user ? (
               <div className="flex items-center gap-3">
                 <div className="hidden text-right sm:block">
                   <p className="max-w-[220px] truncate text-sm font-bold text-gray-200">
@@ -646,11 +679,15 @@ ${result}
                   </p>
 
                   <p className="text-xs text-emerald-300">
-                    {profile?.role === "admin"
-                      ? "Администратор"
-                      : currentPlan
-                        ? `Тариф: ${currentPlan.name}`
-                        : "Аккаунт активен"}
+                    {accountLoadError
+                      ? "Данные не загрузились"
+                      : isAccountLoading
+                        ? "Загружаем данные..."
+                        : profile?.role === "admin"
+                          ? "Администратор"
+                          : currentPlan
+                            ? `Тариф: ${currentPlan.name}`
+                            : "Аккаунт активен"}
                   </p>
                 </div>
 
@@ -682,31 +719,39 @@ ${result}
             <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
               <p className="text-sm text-gray-400">Статус</p>
               <p className="mt-2 text-2xl font-black">
-                {!isAuthReady || isAccountLoading
-                  ? "Загрузка"
-                  : user
-                    ? "В облаке"
-                    : "Нужен вход"}
+                {user
+                  ? accountLoadError
+                    ? "Ошибка загрузки"
+                    : isAccountLoading
+                      ? "Загрузка данных"
+                      : "В облаке"
+                  : isAuthReady
+                    ? "Нужен вход"
+                    : "Проверка"}
               </p>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
               <p className="text-sm text-gray-400">История</p>
               <p className="mt-2 text-2xl font-black">
-                {!isAuthReady || isAccountLoading ? "..." : `${history.length}/10`}
+                {user
+                  ? isAccountLoading
+                    ? "..."
+                    : `${history.length}/10`
+                  : "—"}
               </p>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
               <p className="text-sm text-gray-400">Лимит</p>
               <p className="mt-2 text-2xl font-black">
-                {!isAuthReady || isAccountLoading
-                  ? "..."
-                  : isAdmin
-                    ? "∞"
-                    : user
-                      ? `${todayCount}/${dailyLimit}`
-                      : "Войдите"}
+                {isAdmin
+                  ? "∞"
+                  : user
+                    ? isAccountLoading
+                      ? "..."
+                      : `${todayCount}/${dailyLimit}`
+                    : "Войдите"}
               </p>
             </div>
           </section>
