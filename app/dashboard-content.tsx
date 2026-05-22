@@ -765,9 +765,7 @@ ${result}
               </div>
             )}
 
-            <div className="md:col-span-3 rounded-2xl border border-yellow-300/20 bg-yellow-300/10 p-4 text-sm text-yellow-100">
-  DEBUG: plan={currentPlan?.id} / name={currentPlan?.name} / subscriptionEnd={subscriptionEnd || "null"}
-</div>
+            
 
 
           </section>

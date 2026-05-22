@@ -9,7 +9,11 @@ function startOfTodayIso() {
 
 function isSubscriptionExpired(currentPeriodEnd: string | null) {
   if (!currentPeriodEnd) return false;
-  return new Date(currentPeriodEnd) < new Date();
+
+  const endDate = new Date(currentPeriodEnd);
+  const now = new Date();
+
+  return endDate.getTime() < now.getTime();
 }
 
 export async function GET(request: Request) {
