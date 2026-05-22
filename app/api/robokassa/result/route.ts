@@ -12,7 +12,9 @@ export async function POST(request: Request) {
 
     const outSum = String(formData.get("OutSum") || "");
     const invId = String(formData.get("InvId") || "");
-    const signatureValue = String(formData.get("SignatureValue") || "").toLowerCase();
+    const signatureValue = String(
+      formData.get("SignatureValue") || ""
+    ).toLowerCase();
 
     const shpPlanId = String(formData.get("Shp_planId") || "");
     const shpUserId = String(formData.get("Shp_userId") || "");
@@ -21,7 +23,10 @@ export async function POST(request: Request) {
 
     if (!password2) {
       console.error("ROBOKASSA_PASSWORD_2 missing");
-      return new NextResponse("ROBOKASSA_PASSWORD_2 missing", { status: 500 });
+
+      return new NextResponse("ROBOKASSA_PASSWORD_2 missing", {
+        status: 500,
+      });
     }
 
     if (!outSum || !invId || !signatureValue || !shpPlanId || !shpUserId) {
@@ -53,11 +58,8 @@ export async function POST(request: Request) {
 
     if (paymentFetchError || !payment) {
       console.error("Payment not found", paymentFetchError);
-      return new NextResponse("Payment not found", { status: 404 });
-    }
 
-    if (payment.status === "paid") {
-      return new NextResponse(`OK${invId}`, { status: 200 });
+      return new NextResponse("Payment not found", { status: 404 });
     }
 
     if (
@@ -76,39 +78,111 @@ export async function POST(request: Request) {
       return new NextResponse("Payment mismatch", { status: 400 });
     }
 
-    const { error: paymentUpdateError } = await supabaseServer
-      .from("payments")
-      .update({
-        status: "paid",
-      })
-      .eq("inv_id", Number(invId));
+    if (payment.status !== "paid") {
+      const { error: paymentUpdateError } = await supabaseServer
+        .from("payments")
+        .update({
+          status: "paid",
+        })
+        .eq("inv_id", Number(invId));
 
-    if (paymentUpdateError) {
-      console.error("Payment update error:", paymentUpdateError);
-      return new NextResponse("Payment update failed", { status: 500 });
+      if (paymentUpdateError) {
+        console.error("Payment update error:", paymentUpdateError);
+
+        return new NextResponse("Payment update failed", {
+          status: 500,
+        });
+      }
     }
 
-    const { error: subscriptionUpdateError } = await supabaseServer
-      .from("subscriptions")
-      .upsert(
-        {
+    const { data: existingSubscription, error: subscriptionFetchError } =
+      await supabaseServer
+        .from("subscriptions")
+        .select("id, current_period_end")
+        .eq("user_id", shpUserId)
+        .maybeSingle();
+
+    if (subscriptionFetchError) {
+      console.error(
+        "Subscription fetch error:",
+        subscriptionFetchError
+      );
+
+      return new NextResponse("Subscription fetch failed", {
+        status: 500,
+      });
+    }
+
+    let subscriptionUpdateError = null;
+
+    const now = new Date();
+
+    let nextPeriodEnd = new Date();
+
+    nextPeriodEnd.setDate(nextPeriodEnd.getDate() + 30);
+
+    if (existingSubscription) {
+      const currentPeriodEnd = existingSubscription.current_period_end
+        ? new Date(existingSubscription.current_period_end)
+        : null;
+
+      if (currentPeriodEnd && currentPeriodEnd > now) {
+        nextPeriodEnd = new Date(currentPeriodEnd);
+
+        nextPeriodEnd.setDate(
+          nextPeriodEnd.getDate() + 30
+        );
+      }
+
+      const { error } = await supabaseServer
+        .from("subscriptions")
+        .update({
+          plan_id: shpPlanId,
+          status: "active",
+          current_period_end:
+            nextPeriodEnd.toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", shpUserId);
+
+      subscriptionUpdateError = error;
+    } else {
+      const { error } = await supabaseServer
+        .from("subscriptions")
+        .insert({
           user_id: shpUserId,
           plan_id: shpPlanId,
           status: "active",
-        },
-        {
-          onConflict: "user_id",
-        }
-      );
+          current_period_end:
+            nextPeriodEnd.toISOString(),
+          updated_at: new Date().toISOString(),
+        });
 
-    if (subscriptionUpdateError) {
-      console.error("Subscription update error:", subscriptionUpdateError);
-      return new NextResponse("Subscription update failed", { status: 500 });
+      subscriptionUpdateError = error;
     }
 
-    return new NextResponse(`OK${invId}`, { status: 200 });
+    if (subscriptionUpdateError) {
+      console.error(
+        "Subscription update error:",
+        subscriptionUpdateError
+      );
+
+      return new NextResponse(
+        "Subscription update failed",
+        {
+          status: 500,
+        }
+      );
+    }
+
+    return new NextResponse(`OK${invId}`, {
+      status: 200,
+    });
   } catch (error) {
     console.error("Robokassa result error:", error);
-    return new NextResponse("Server error", { status: 500 });
+
+    return new NextResponse("Server error", {
+      status: 500,
+    });
   }
 }
