@@ -2,9 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase";
-import { SupportMessage, SupportTicket } from "@/lib/support/types";
+import {
+  SupportMessage,
+  SupportTicket,
+  TicketPriority,
+  TicketStatus,
+} from "@/lib/support/types";
 import TicketList from "./TicketList";
 import TicketDetails from "./TicketDetails";
+import TicketFilters from "./TicketFilters";
 
 type TicketDetailsResponse = {
   ticket: SupportTicket;
@@ -23,6 +29,32 @@ export default function AdminSupportView() {
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | TicketStatus>("all");
+  const [priorityFilter, setPriorityFilter] = useState<"all" | TicketPriority>(
+    "all"
+  );
+
+  const filteredTickets = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    return tickets.filter((ticket) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        ticket.subject.toLowerCase().includes(normalizedSearch) ||
+        ticket.customer_email?.toLowerCase().includes(normalizedSearch) ||
+        ticket.last_message_preview?.toLowerCase().includes(normalizedSearch);
+
+      const matchesStatus =
+        statusFilter === "all" || ticket.status === statusFilter;
+
+      const matchesPriority =
+        priorityFilter === "all" || ticket.priority === priorityFilter;
+
+      return matchesSearch && matchesStatus && matchesPriority;
+    });
+  }, [tickets, search, statusFilter, priorityFilter]);
 
   const getAccessToken = useCallback(async () => {
     const {
@@ -100,10 +132,22 @@ export default function AdminSupportView() {
   }, [loadTickets]);
 
   useEffect(() => {
-    if (!selectedTicketId && tickets.length > 0) {
-      void loadTicketDetails(tickets[0].id);
+    if (!selectedTicketId && filteredTickets.length > 0) {
+      void loadTicketDetails(filteredTickets[0].id);
     }
-  }, [tickets, selectedTicketId, loadTicketDetails]);
+  }, [filteredTickets, selectedTicketId, loadTicketDetails]);
+
+  useEffect(() => {
+    if (
+      selectedTicketId &&
+      filteredTickets.length > 0 &&
+      !filteredTickets.some((ticket) => ticket.id === selectedTicketId)
+    ) {
+      setSelectedTicketId(null);
+      setSelectedTicket(null);
+      setMessages([]);
+    }
+  }, [filteredTickets, selectedTicketId]);
 
   if (isLoading) {
     return (
@@ -143,10 +187,19 @@ export default function AdminSupportView() {
         </div>
       </div>
 
-      {tickets.length > 0 ? (
+      <TicketFilters
+        search={search}
+        status={statusFilter}
+        priority={priorityFilter}
+        onSearchChange={setSearch}
+        onStatusChange={setStatusFilter}
+        onPriorityChange={setPriorityFilter}
+      />
+
+      {filteredTickets.length > 0 ? (
         <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
           <TicketList
-            tickets={tickets}
+            tickets={filteredTickets}
             selectedTicketId={selectedTicketId}
             onSelectTicket={loadTicketDetails}
           />
@@ -183,7 +236,7 @@ export default function AdminSupportView() {
         </div>
       ) : (
         <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-10 text-center text-zinc-400">
-          Пока нет тикетов
+          По заданным фильтрам тикеты не найдены
         </div>
       )}
     </div>
