@@ -6,18 +6,21 @@ import { createClient } from "@/utils/supabase";
 type PlanId = "creator" | "smm_pro";
 
 type PricingSectionProps = {
+  currentPlan?: string | null;
   onAuthRequired?: () => void;
 };
 
 export function PricingSection({
+  currentPlan,
   onAuthRequired,
 }: PricingSectionProps) {
   const supabase = createClient();
 
-  const [loadingPlan, setLoadingPlan] =
-    useState<PlanId | null>(null);
+  const [loadingPlan, setLoadingPlan] = useState<PlanId | null>(null);
 
   async function handleCheckout(planId: PlanId) {
+    if (currentPlan === planId) return;
+
     try {
       setLoadingPlan(planId);
 
@@ -46,15 +49,12 @@ export function PricingSection({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.error || "Ошибка создания платежа"
-        );
+        throw new Error(data.error || "Ошибка создания платежа");
       }
 
       window.location.href = data.url;
     } catch (error) {
       console.error(error);
-
       alert("Ошибка оплаты");
     } finally {
       setLoadingPlan(null);
@@ -86,8 +86,11 @@ export function PricingSection({
               <p>• Базовые стили</p>
             </div>
 
-            <button className="mt-6 w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-bold transition hover:bg-white/10">
-              Текущий план
+            <button
+              disabled
+              className="mt-6 w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-bold opacity-70"
+            >
+              {currentPlan === "free" ? "Текущий план" : "Бесплатный тариф"}
             </button>
           </div>
         </div>
@@ -102,9 +105,7 @@ export function PricingSection({
 
             <p className="text-sm text-cyan-200">Creator</p>
 
-            <h3 className="mt-2 text-3xl font-black">
-              299 ₽
-            </h3>
+            <h3 className="mt-2 text-3xl font-black">299 ₽</h3>
 
             <div className="mt-4 space-y-2 text-gray-200">
               <p>• 50 генераций в день</p>
@@ -114,12 +115,14 @@ export function PricingSection({
 
             <button
               onClick={() => handleCheckout("creator")}
-              disabled={loadingPlan === "creator"}
-              className="mt-6 w-full rounded-2xl bg-gradient-to-r from-cyan-300 to-violet-300 px-5 py-3 font-black text-black transition hover:scale-[1.02] disabled:opacity-50"
+              disabled={loadingPlan === "creator" || currentPlan === "creator"}
+              className="mt-6 w-full rounded-2xl bg-gradient-to-r from-cyan-300 to-violet-300 px-5 py-3 font-black text-black transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loadingPlan === "creator"
-                ? "Переход..."
-                : "Улучшить план"}
+              {currentPlan === "creator"
+                ? "Текущий план"
+                : loadingPlan === "creator"
+                  ? "Переход..."
+                  : "Улучшить план"}
             </button>
           </div>
         </div>
@@ -128,13 +131,9 @@ export function PricingSection({
           <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-violet-300/20 opacity-0 blur-3xl transition group-hover:opacity-100" />
 
           <div className="relative">
-            <p className="text-sm text-violet-200">
-              SMM Pro
-            </p>
+            <p className="text-sm text-violet-200">SMM Pro</p>
 
-            <h3 className="mt-2 text-3xl font-black">
-              990 ₽
-            </h3>
+            <h3 className="mt-2 text-3xl font-black">990 ₽</h3>
 
             <div className="mt-4 space-y-2 text-gray-300">
               <p>• Безлимит генераций</p>
@@ -144,12 +143,14 @@ export function PricingSection({
 
             <button
               onClick={() => handleCheckout("smm_pro")}
-              disabled={loadingPlan === "smm_pro"}
-              className="mt-6 w-full rounded-2xl border border-violet-300/20 bg-violet-300/10 px-5 py-3 font-bold text-violet-100 transition hover:bg-violet-300/20 disabled:opacity-50"
+              disabled={loadingPlan === "smm_pro" || currentPlan === "smm_pro"}
+              className="mt-6 w-full rounded-2xl border border-violet-300/20 bg-violet-300/10 px-5 py-3 font-bold text-violet-100 transition hover:bg-violet-300/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loadingPlan === "smm_pro"
-                ? "Переход..."
-                : "Для команды"}
+              {currentPlan === "smm_pro"
+                ? "Текущий план"
+                : loadingPlan === "smm_pro"
+                  ? "Переход..."
+                  : "Для команды"}
             </button>
           </div>
         </div>

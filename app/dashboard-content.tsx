@@ -776,7 +776,10 @@ ${result}
             onOpenItem={openHistoryItem}
           />
 
-          <PricingSection onAuthRequired={() => setIsAuthModalOpen(true)} />
+          <PricingSection
+            currentPlan={currentPlan?.id}
+            onAuthRequired={() => setIsAuthModalOpen(true)}
+          />
 
           <SettingsSection
             user={user}
