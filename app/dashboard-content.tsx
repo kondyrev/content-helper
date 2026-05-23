@@ -420,6 +420,31 @@ ${result}
     showToast("История очищена", "success");
   }
 
+
+  async function deleteHistoryItems(ids: string[]) {
+  if (!user || ids.length === 0) return;
+
+  const { error } = await supabase
+    .from("generations")
+    .delete()
+    .eq("user_id", user.id)
+    .in("id", ids);
+
+  if (error) {
+    console.error(error);
+    showToast("Ошибка удаления", "error");
+    return;
+  }
+
+  setHistory((current) => current.filter((item) => !ids.includes(item.id)));
+
+  showToast(
+    ids.length === 1 ? "Запись удалена" : "Выбранные записи удалены",
+    "success"
+  );
+}
+
+
   async function changeUserRole(userId: string, role: "user" | "admin") {
     try {
       await updateUserRole(supabase, userId, role);
@@ -774,6 +799,7 @@ ${result}
             history={history}
             onClear={clearCloudHistory}
             onOpenItem={openHistoryItem}
+            onDeleteItems={deleteHistoryItems}
           />
 
           <PricingSection
