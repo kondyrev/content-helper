@@ -103,6 +103,12 @@ export default function UserSupportView() {
     void loadTickets();
   }, [loadTickets]);
 
+  useEffect(() => {
+    if (!selectedTicketId && tickets.length > 0) {
+      void loadTicketDetails(tickets[0].id);
+    }
+  }, [tickets, selectedTicketId, loadTicketDetails]);
+
   return (
     <>
       <div className="flex justify-end">

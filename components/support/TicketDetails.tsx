@@ -3,28 +3,40 @@
 import { useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase";
 import {
+  SUPPORT_PRIORITIES,
   SUPPORT_PRIORITY_LABELS,
+  SUPPORT_STATUSES,
   SUPPORT_STATUS_LABELS,
 } from "@/lib/support/constants";
-import { SupportMessage, SupportTicket } from "@/lib/support/types";
+import {
+  SupportMessage,
+  SupportTicket,
+  TicketPriority,
+  TicketStatus,
+} from "@/lib/support/types";
 
 interface Props {
   ticket: SupportTicket | null;
   messages: SupportMessage[];
   currentUserId: string;
+  isAdmin?: boolean;
   onMessageCreated?: (message: SupportMessage) => void;
+  onTicketUpdated?: (ticket: SupportTicket) => void;
 }
 
 export default function TicketDetails({
   ticket,
   messages,
   currentUserId,
+  isAdmin = false,
   onMessageCreated,
+  onTicketUpdated,
 }: Props) {
   const supabase = useMemo(() => createClient(), []);
 
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   if (!ticket) {
     return (
@@ -54,9 +66,7 @@ export default function TicketDetails({
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({
-            message,
-          }),
+          body: JSON.stringify({ message }),
         }
       );
 
@@ -75,6 +85,44 @@ export default function TicketDetails({
     }
   }
 
+  async function handleUpdateTicket(updates: {
+    status?: TicketStatus;
+    priority?: TicketPriority;
+  }) {
+    if (!ticket) return;
+
+    try {
+      setIsUpdating(true);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) return;
+
+      const response = await fetch(`/api/support/tickets/${ticket.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(updates),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Не удалось обновить тикет");
+      }
+
+      onTicketUpdated?.(data.ticket);
+    } catch (error) {
+      console.error("Update support ticket error:", error);
+    } finally {
+      setIsUpdating(false);
+    }
+  }
+
   return (
     <div className="flex min-h-[500px] flex-col rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl">
       <div className="border-b border-white/10 p-5">
@@ -85,6 +133,12 @@ export default function TicketDetails({
             {ticket.description && (
               <p className="mt-1 text-sm text-zinc-400">
                 {ticket.description}
+              </p>
+            )}
+
+            {ticket.customer_email && (
+              <p className="mt-2 text-xs text-zinc-500">
+                Клиент: {ticket.customer_email}
               </p>
             )}
           </div>
@@ -99,6 +153,52 @@ export default function TicketDetails({
             </span>
           </div>
         </div>
+
+        {isAdmin && (
+          <div className="mt-5 grid gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 md:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-xs text-zinc-400">Статус</span>
+
+              <select
+                value={ticket.status}
+                disabled={isUpdating}
+                onChange={(event) =>
+                  handleUpdateTicket({
+                    status: event.target.value as TicketStatus,
+                  })
+                }
+                className="w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white outline-none"
+              >
+                {SUPPORT_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {SUPPORT_STATUS_LABELS[status]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-xs text-zinc-400">Приоритет</span>
+
+              <select
+                value={ticket.priority}
+                disabled={isUpdating}
+                onChange={(event) =>
+                  handleUpdateTicket({
+                    priority: event.target.value as TicketPriority,
+                  })
+                }
+                className="w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white outline-none"
+              >
+                {SUPPORT_PRIORITIES.map((priority) => (
+                  <option key={priority} value={priority}>
+                    {SUPPORT_PRIORITY_LABELS[priority]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 space-y-4 p-5">

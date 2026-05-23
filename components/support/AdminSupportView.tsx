@@ -17,7 +17,9 @@ export default function AdminSupportView() {
   const [currentUserId, setCurrentUserId] = useState("");
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
-  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
+  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(
+    null
+  );
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
@@ -28,6 +30,7 @@ export default function AdminSupportView() {
     } = await supabase.auth.getSession();
 
     setCurrentUserId(session?.user?.id || "");
+
     return session?.access_token;
   }, [supabase]);
 
@@ -36,6 +39,7 @@ export default function AdminSupportView() {
       setIsLoading(true);
 
       const token = await getAccessToken();
+
       if (!token) return;
 
       const response = await fetch("/api/support/tickets", {
@@ -65,6 +69,7 @@ export default function AdminSupportView() {
         setSelectedTicketId(ticketId);
 
         const token = await getAccessToken();
+
         if (!token) return;
 
         const response = await fetch(`/api/support/tickets/${ticketId}`, {
@@ -93,6 +98,12 @@ export default function AdminSupportView() {
   useEffect(() => {
     void loadTickets();
   }, [loadTickets]);
+
+  useEffect(() => {
+    if (!selectedTicketId && tickets.length > 0) {
+      void loadTicketDetails(tickets[0].id);
+    }
+  }, [tickets, selectedTicketId, loadTicketDetails]);
 
   if (isLoading) {
     return (
@@ -149,9 +160,23 @@ export default function AdminSupportView() {
               ticket={selectedTicket}
               messages={messages}
               currentUserId={currentUserId}
+              isAdmin
               onMessageCreated={(newMessage) => {
                 setMessages((prev) => [...prev, newMessage]);
                 void loadTickets();
+              }}
+              onTicketUpdated={(updatedTicket) => {
+                setSelectedTicket((prev) =>
+                  prev ? { ...prev, ...updatedTicket } : updatedTicket
+                );
+
+                setTickets((prev) =>
+                  prev.map((ticket) =>
+                    ticket.id === updatedTicket.id
+                      ? { ...ticket, ...updatedTicket }
+                      : ticket
+                  )
+                );
               }}
             />
           )}
