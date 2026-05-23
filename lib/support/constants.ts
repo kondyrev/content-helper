@@ -14,3 +14,18 @@ export const SUPPORT_PRIORITIES: TicketPriority[] = [
   "high",
   "urgent",
 ];
+
+export const SUPPORT_PRIORITY_LABELS: Record<TicketPriority, string> = {
+  low: "Низкая",
+  medium: "Средняя",
+  high: "Высокая",
+  urgent: "Срочная",
+};
+
+export const SUPPORT_STATUS_LABELS: Record<TicketStatus, string> = {
+  open: "Открыт",
+  in_progress: "В работе",
+  waiting_user: "Ожидает ответа",
+  resolved: "Решён",
+  closed: "Закрыт",
+};

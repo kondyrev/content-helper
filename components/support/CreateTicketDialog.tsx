@@ -2,7 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase";
-import { SUPPORT_PRIORITIES } from "@/lib/support/constants";
+import {
+  SUPPORT_PRIORITIES,
+  SUPPORT_PRIORITY_LABELS,
+} from "@/lib/support/constants";
 
 interface Props {
   open: boolean;
@@ -93,12 +96,8 @@ export default function CreateTicketDialog({
             className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none"
           >
             {SUPPORT_PRIORITIES.map((item) => (
-              <option
-                key={item}
-                value={item}
-                className="bg-zinc-900"
-              >
-                {item}
+              <option key={item} value={item} className="bg-zinc-900">
+                {SUPPORT_PRIORITY_LABELS[item]}
               </option>
             ))}
           </select>
