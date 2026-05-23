@@ -1,3 +1,7 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { createClient } from "@/utils/supabase";
 import {
   SUPPORT_PRIORITY_LABELS,
   SUPPORT_STATUS_LABELS,
@@ -8,19 +12,67 @@ interface Props {
   ticket: SupportTicket | null;
   messages: SupportMessage[];
   currentUserId: string;
+  onMessageCreated?: (message: SupportMessage) => void;
 }
 
 export default function TicketDetails({
   ticket,
   messages,
   currentUserId,
+  onMessageCreated,
 }: Props) {
+  const supabase = useMemo(() => createClient(), []);
+
+  const [message, setMessage] = useState("");
+  const [isSending, setIsSending] = useState(false);
+
   if (!ticket) {
     return (
       <div className="hidden min-h-[500px] items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] p-6 text-zinc-400 backdrop-blur-xl lg:flex">
         Выберите тикет
       </div>
     );
+  }
+
+  async function handleSendMessage() {
+    if (!ticket || !message.trim()) return;
+
+    try {
+      setIsSending(true);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) return;
+
+      const response = await fetch(
+        `/api/support/tickets/${ticket.id}/messages`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            message,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Не удалось отправить сообщение");
+      }
+
+      setMessage("");
+      onMessageCreated?.(data.message);
+    } catch (error) {
+      console.error("Send support message error:", error);
+    } finally {
+      setIsSending(false);
+    }
   }
 
   return (
@@ -50,12 +102,12 @@ export default function TicketDetails({
       </div>
 
       <div className="flex-1 space-y-4 p-5">
-        {messages.map((message) => {
-          const isMine = message.sender_id === currentUserId;
+        {messages.map((item) => {
+          const isMine = item.sender_id === currentUserId;
 
           return (
             <div
-              key={message.id}
+              key={item.id}
               className={`flex ${isMine ? "justify-end" : "justify-start"}`}
             >
               <div
@@ -65,19 +117,39 @@ export default function TicketDetails({
                     : "border border-white/10 bg-white/5 text-zinc-100"
                 }`}
               >
-                <p className="whitespace-pre-wrap">{message.message}</p>
+                <p className="whitespace-pre-wrap">{item.message}</p>
 
                 <div
                   className={`mt-2 text-[11px] ${
                     isMine ? "text-violet-100" : "text-zinc-500"
                   }`}
                 >
-                  {new Date(message.created_at).toLocaleString("ru-RU")}
+                  {new Date(item.created_at).toLocaleString("ru-RU")}
                 </div>
               </div>
             </div>
           );
         })}
+      </div>
+
+      <div className="border-t border-white/10 p-4">
+        <div className="flex flex-col gap-3 md:flex-row">
+          <textarea
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            placeholder="Напишите сообщение..."
+            rows={2}
+            className="min-h-[52px] flex-1 resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-400/50"
+          />
+
+          <button
+            onClick={handleSendMessage}
+            disabled={isSending || !message.trim()}
+            className="rounded-2xl bg-violet-500 px-5 py-3 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSending ? "Отправка..." : "Отправить"}
+          </button>
+        </div>
       </div>
     </div>
   );

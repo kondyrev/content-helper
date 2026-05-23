@@ -130,6 +130,10 @@ export default function UserSupportView() {
               ticket={selectedTicket}
               messages={messages}
               currentUserId={currentUserId}
+              onMessageCreated={(newMessage) => {
+                setMessages((prev) => [...prev, newMessage]);
+                void loadTickets();
+              }}
             />
           )}
         </div>
