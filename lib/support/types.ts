@@ -21,3 +21,13 @@ export interface SupportTicket {
   updated_at: string;
   last_message_at: string;
 }
+
+export interface SupportMessage {
+  id: string;
+  ticket_id: string;
+  sender_id: string;
+  message: string;
+  is_internal: boolean;
+  created_at: string;
+  updated_at: string;
+}

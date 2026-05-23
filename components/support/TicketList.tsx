@@ -6,15 +6,26 @@ import { SupportTicket } from "@/lib/support/types";
 
 interface Props {
   tickets: SupportTicket[];
+  selectedTicketId?: string | null;
+  onSelectTicket: (ticketId: string) => void;
 }
 
-export default function TicketList({ tickets }: Props) {
+export default function TicketList({
+  tickets,
+  selectedTicketId,
+  onSelectTicket,
+}: Props) {
   return (
     <div className="grid gap-3">
       {tickets.map((ticket) => (
         <button
           key={ticket.id}
-          className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 text-left backdrop-blur-xl transition hover:border-violet-400/40 hover:bg-white/[0.07]"
+          onClick={() => onSelectTicket(ticket.id)}
+          className={`rounded-3xl border p-5 text-left backdrop-blur-xl transition ${
+            selectedTicketId === ticket.id
+              ? "border-violet-400/50 bg-violet-400/10"
+              : "border-white/10 bg-white/[0.04] hover:border-violet-400/40 hover:bg-white/[0.07]"
+          }`}
         >
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
@@ -41,7 +52,8 @@ export default function TicketList({ tickets }: Props) {
           </div>
 
           <div className="mt-4 text-xs text-zinc-500">
-            Обновлён: {new Date(ticket.last_message_at).toLocaleString("ru-RU")}
+            Обновлён:{" "}
+            {new Date(ticket.last_message_at).toLocaleString("ru-RU")}
           </div>
         </button>
       ))}
