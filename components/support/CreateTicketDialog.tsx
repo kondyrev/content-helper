@@ -10,10 +10,12 @@ import {
 interface Props {
   open: boolean;
   onClose: () => void;
+  onCreated?: () => void;
 }
 
 export default function CreateTicketDialog({
   open,
+  onCreated,
   onClose,
 }: Props) {
   const supabase = useMemo(() => createClient(), []);
@@ -59,6 +61,7 @@ export default function CreateTicketDialog({
       setDescription("");
       setPriority("medium");
 
+      onCreated?.();
       onClose();
     } catch (error) {
       console.error(error);
