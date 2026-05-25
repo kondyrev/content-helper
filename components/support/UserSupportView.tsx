@@ -139,6 +139,17 @@ export default function UserSupportView() {
 
         setSelectedTicket(data.ticket);
         setMessages(data.messages || []);
+
+        setTickets((prev) =>
+          prev.map((ticket) =>
+            ticket.id === ticketId
+              ? {
+                  ...ticket,
+                  unread_count: 0,
+                }
+              : ticket
+          )
+        );
       } catch (error) {
         console.error("Load ticket details error:", error);
       } finally {

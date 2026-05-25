@@ -90,7 +90,21 @@ export default function AdminSupportView() {
         throw new Error(data.error || "Не удалось загрузить тикеты");
       }
 
-      setTickets(data.tickets || []);
+      const nextTickets = data.tickets || [];
+
+      setTickets(nextTickets);
+
+      setSelectedTicket((prev) => {
+        if (!prev) return prev;
+
+        const updatedSelectedTicket = nextTickets.find(
+          (ticket: SupportTicket) => ticket.id === prev.id
+        );
+
+        return updatedSelectedTicket
+          ? { ...prev, ...updatedSelectedTicket }
+          : prev;
+      });
     } catch (error) {
       console.error("Load admin support tickets error:", error);
     } finally {
@@ -122,6 +136,17 @@ export default function AdminSupportView() {
 
         setSelectedTicket(data.ticket);
         setMessages(data.messages || []);
+
+        setTickets((prev) =>
+          prev.map((ticket) =>
+            ticket.id === ticketId
+              ? {
+                  ...ticket,
+                  unread_count: 0,
+                }
+              : ticket
+          )
+        );
       } catch (error) {
         console.error("Load admin ticket details error:", error);
       } finally {
