@@ -170,12 +170,6 @@ export default function UserSupportView() {
   }, [loadTickets]);
 
   useEffect(() => {
-    if (!selectedTicketId && filteredTickets.length > 0) {
-      void loadTicketDetails(filteredTickets[0].id);
-    }
-  }, [filteredTickets, selectedTicketId, loadTicketDetails]);
-
-  useEffect(() => {
     if (
       selectedTicketId &&
       filteredTickets.length > 0 &&

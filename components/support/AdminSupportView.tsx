@@ -166,13 +166,7 @@ export default function AdminSupportView() {
     void loadTickets();
   }, [loadTickets]);
 
-  useEffect(() => {
-    if (!selectedTicketId && filteredTickets.length > 0) {
-      void loadTicketDetails(filteredTickets[0].id);
-    }
-  }, [filteredTickets, selectedTicketId, loadTicketDetails]);
-
-  useEffect(() => {
+   useEffect(() => {
     if (
       selectedTicketId &&
       filteredTickets.length > 0 &&
