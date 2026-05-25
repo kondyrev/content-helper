@@ -551,6 +551,7 @@ ${result}
     { label: "📜 История", id: "history" },
     { label: "💎 Тарифы", id: "pricing" },
     { label: "⚙️ Настройки", id: "settings" },
+    { label: "🎧 Поддержка", id: "support" },
     ...(isAdmin ? [{ label: "🛠️ Админка", id: "admin" }] : []),
   ];
 

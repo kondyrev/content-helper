@@ -56,7 +56,14 @@ export function Sidebar({
           {menuItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => onNavigate(item.id)}
+              onClick={() => {
+                if (item.id === "support") {
+                  window.location.href = "/support";
+                  return;
+                }
+
+                onNavigate(item.id);
+              }}
               className="w-full rounded-2xl border border-transparent bg-white/5 px-4 py-3 text-left text-sm font-medium text-gray-300 transition hover:border-white/10 hover:bg-white/10 hover:text-white"
             >
               {item.label}
