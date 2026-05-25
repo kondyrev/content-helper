@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase";
 import {
   SUPPORT_PRIORITIES,
@@ -9,11 +9,13 @@ import {
   SUPPORT_STATUS_LABELS,
 } from "@/lib/support/constants";
 import {
+  SupportAttachment,
   SupportMessage,
   SupportTicket,
   TicketPriority,
   TicketStatus,
 } from "@/lib/support/types";
+import MessageAttachments from "./MessageAttachments";
 
 interface Props {
   ticket: SupportTicket | null;
@@ -36,8 +38,10 @@ export default function TicketDetails({
 }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [message, setMessage] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [sendError, setSendError] = useState("");
@@ -67,9 +71,60 @@ export default function TicketDetails({
   const isClosedForUser = ticket.status === "closed" && !isAdmin;
   const isResolvedForUser = ticket.status === "resolved" && !isAdmin;
   const isAssignedToCurrentAdmin = ticket.assigned_admin_id === currentUserId;
+  const canSend = message.trim().length > 0 || selectedFiles.length > 0;
+
+  function handleFilesChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    setSelectedFiles(files);
+  }
+
+  function clearFiles() {
+    setSelectedFiles([]);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
+  async function uploadAttachments(messageId: string) {
+    if (!ticket || selectedFiles.length === 0) return [];
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) return [];
+
+    const formData = new FormData();
+
+    selectedFiles.forEach((file) => {
+      formData.append("files", file);
+    });
+
+    formData.append("messageId", messageId);
+
+    const response = await fetch(
+      `/api/support/tickets/${ticket.id}/attachments`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Не удалось загрузить файлы");
+    }
+
+    return (data.attachments || []) as SupportAttachment[];
+  }
 
   async function handleSendMessage() {
-    if (!ticket || !message.trim() || isClosedForUser) return;
+    if (!ticket || !canSend || isClosedForUser) return;
 
     try {
       setIsSending(true);
@@ -89,7 +144,9 @@ export default function TicketDetails({
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify({
+            message: message.trim() || "Вложение",
+          }),
         }
       );
 
@@ -99,8 +156,17 @@ export default function TicketDetails({
         throw new Error(data.error || "Не удалось отправить сообщение");
       }
 
+      const uploadedAttachments = await uploadAttachments(data.message.id);
+
+      const createdMessage: SupportMessage = {
+        ...data.message,
+        attachments: uploadedAttachments,
+      };
+
       setMessage("");
-      onMessageCreated?.(data.message);
+      clearFiles();
+
+      onMessageCreated?.(createdMessage);
 
       if (data.ticket) {
         onTicketUpdated?.(data.ticket);
@@ -319,6 +385,8 @@ export default function TicketDetails({
                       {item.message}
                     </p>
 
+                    <MessageAttachments attachments={item.attachments || []} />
+
                     <div
                       className={`mt-3 text-[11px] ${
                         isMine ? "text-violet-100" : "text-zinc-500"
@@ -357,6 +425,35 @@ export default function TicketDetails({
               </div>
             )}
 
+            {selectedFiles.length > 0 && (
+              <div className="mb-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-xs text-zinc-400">
+                    Файлы: {selectedFiles.length}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={clearFiles}
+                    className="text-xs text-zinc-400 transition hover:text-white"
+                  >
+                    Очистить
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {selectedFiles.map((file) => (
+                    <span
+                      key={`${file.name}-${file.size}`}
+                      className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-zinc-300"
+                    >
+                      📎 {file.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col gap-3 md:flex-row">
               <textarea
                 value={message}
@@ -366,13 +463,32 @@ export default function TicketDetails({
                 className="min-h-[60px] flex-1 resize-none rounded-[22px] border border-white/10 bg-white/[0.04] px-5 py-4 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-violet-400/50"
               />
 
-              <button
-                onClick={handleSendMessage}
-                disabled={isSending || !message.trim()}
-                className="rounded-[22px] bg-violet-500 px-6 py-4 text-sm font-semibold text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isSending ? "Отправка..." : "Отправить"}
-              </button>
+              <div className="flex gap-3 md:flex-col">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  onChange={handleFilesChange}
+                  className="hidden"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isSending}
+                  className="rounded-[22px] border border-white/10 bg-white/[0.04] px-5 py-4 text-sm font-semibold text-zinc-300 transition hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  📎
+                </button>
+
+                <button
+                  onClick={handleSendMessage}
+                  disabled={isSending || !canSend}
+                  className="rounded-[22px] bg-violet-500 px-6 py-4 text-sm font-semibold text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isSending ? "Отправка..." : "Отправить"}
+                </button>
+              </div>
             </div>
           </>
         )}

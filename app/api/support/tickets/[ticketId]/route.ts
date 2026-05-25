@@ -7,6 +7,38 @@ interface Params {
   }>;
 }
 
+type SupabaseApiClient = ReturnType<typeof createClient<any, "public", any>>;
+
+type AttachmentRow = {
+  id: string;
+  ticket_id: string;
+  message_id: string | null;
+  uploaded_by: string;
+  file_name: string;
+  file_path: string;
+  file_size: number | null;
+  mime_type: string | null;
+  created_at: string;
+};
+
+async function attachSignedUrls(
+  supabase: SupabaseApiClient,
+  attachments: AttachmentRow[]
+) {
+  return Promise.all(
+    attachments.map(async (attachment) => {
+      const { data } = await supabase.storage
+        .from("support-attachments")
+        .createSignedUrl(attachment.file_path, 60 * 60);
+
+      return {
+        ...attachment,
+        signed_url: data?.signedUrl || null,
+      };
+    })
+  );
+}
+
 export async function GET(request: NextRequest, { params }: Params) {
   try {
     const { ticketId } = await params;
@@ -63,6 +95,39 @@ export async function GET(request: NextRequest, { params }: Params) {
       );
     }
 
+    const { data: attachments, error: attachmentsError } = await supabase
+      .from("support_attachments")
+      .select("*")
+      .eq("ticket_id", ticketId)
+      .order("created_at", { ascending: true });
+
+    if (attachmentsError) {
+      return NextResponse.json(
+        { error: "Не удалось загрузить вложения" },
+        { status: 500 }
+      );
+    }
+
+    const attachmentsWithUrls = await attachSignedUrls(
+      supabase,
+      attachments || []
+    );
+
+    const attachmentsByMessageId = new Map<string, typeof attachmentsWithUrls>();
+
+    for (const attachment of attachmentsWithUrls) {
+      if (!attachment.message_id) continue;
+
+      const current = attachmentsByMessageId.get(attachment.message_id) || [];
+      current.push(attachment);
+      attachmentsByMessageId.set(attachment.message_id, current);
+    }
+
+    const messagesWithAttachments = (messages || []).map((message) => ({
+      ...message,
+      attachments: attachmentsByMessageId.get(message.id) || [],
+    }));
+
     await supabase.from("support_ticket_reads").upsert({
       ticket_id: ticketId,
       user_id: user.id,
@@ -71,7 +136,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     return NextResponse.json({
       ticket,
-      messages: messages || [],
+      messages: messagesWithAttachments,
     });
   } catch (error) {
     console.error("Get support ticket details error:", error);
