@@ -95,41 +95,6 @@ export default function TicketDetails({
     }
   }
 
-  async function uploadAttachments(messageId: string) {
-    if (!ticket || selectedFiles.length === 0) return;
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.access_token) return;
-
-    const formData = new FormData();
-
-    selectedFiles.forEach((file) => {
-      formData.append("files", file);
-    });
-
-    formData.append("messageId", messageId);
-
-    const response = await fetch(
-      `/api/support/tickets/${ticket.id}/attachments`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: formData,
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || "Не удалось загрузить изображения");
-    }
-  }
-
   async function handleSendMessage() {
     if (!ticket || !canSend || isClosedForUser) return;
 
@@ -137,27 +102,27 @@ export default function TicketDetails({
       setIsSending(true);
       setSendError("");
 
-      const hasFiles = selectedFiles.length > 0;
-
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
       if (!session?.access_token) return;
 
-      const response = await fetch(
-        `/api/support/tickets/${ticket.id}/messages`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            message: message.trim() || "Скриншот",
-          }),
-        }
-      );
+      const formData = new FormData();
+
+      formData.append("message", message.trim());
+
+      selectedFiles.forEach((file) => {
+        formData.append("files", file);
+      });
+
+      const response = await fetch(`/api/support/tickets/${ticket.id}/messages`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      });
 
       const data = await response.json();
 
@@ -165,23 +130,16 @@ export default function TicketDetails({
         throw new Error(data.error || "Не удалось отправить сообщение");
       }
 
-      await uploadAttachments(data.message.id);
-
       setMessage("");
       clearFiles();
+
+      onMessageCreated?.(data.message);
 
       if (data.ticket) {
         onTicketUpdated?.(data.ticket);
       }
 
-      if (hasFiles) {
-        onRefresh?.();
-      } else {
-        onMessageCreated?.({
-          ...data.message,
-          attachments: [],
-        });
-      }
+      onRefresh?.();
     } catch (error) {
       console.error("Send support message error:", error);
 

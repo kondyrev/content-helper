@@ -7,6 +7,37 @@ interface Params {
   }>;
 }
 
+function sanitizeFileName(fileName: string) {
+  return fileName
+    .replace(/[^\w.\-а-яА-ЯёЁ]/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 120);
+}
+
+async function createSignedAttachment(
+  supabase: ReturnType<typeof createClient<any, "public", any>>,
+  attachment: {
+    id: string;
+    ticket_id: string;
+    message_id: string | null;
+    uploaded_by: string;
+    file_name: string;
+    file_path: string;
+    file_size: number | null;
+    mime_type: string | null;
+    created_at: string;
+  }
+) {
+  const { data } = await supabase.storage
+    .from("support-attachments")
+    .createSignedUrl(attachment.file_path, 60 * 60);
+
+  return {
+    ...attachment,
+    signed_url: data?.signedUrl || null,
+  };
+}
+
 export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { ticketId } = await params;
@@ -40,15 +71,36 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
+    const formData = await request.formData();
 
-    const message = body.message?.trim();
+    const rawMessage = formData.get("message")?.toString().trim() || "";
+    const files = formData.getAll("files").filter(Boolean) as File[];
 
-    if (!message) {
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+
+    if (files.length !== imageFiles.length) {
       return NextResponse.json(
-        { error: "Сообщение обязательно" },
+        { error: "Можно прикреплять только изображения" },
         { status: 400 }
       );
+    }
+
+    if (!rawMessage && imageFiles.length === 0) {
+      return NextResponse.json(
+        { error: "Сообщение или скриншот обязательны" },
+        { status: 400 }
+      );
+    }
+
+    const maxFileSize = 10 * 1024 * 1024;
+
+    for (const file of imageFiles) {
+      if (file.size > maxFileSize) {
+        return NextResponse.json(
+          { error: `Файл ${file.name} больше 10 МБ` },
+          { status: 400 }
+        );
+      }
     }
 
     const { data: profile } = await supabase
@@ -66,10 +118,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       .single();
 
     if (ticketError || !ticket) {
-      return NextResponse.json(
-        { error: "Тикет не найден" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Тикет не найден" }, { status: 404 });
     }
 
     if (!isAdmin && ticket.user_id !== user.id) {
@@ -77,29 +126,77 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     if (ticket.status === "closed" && !isAdmin) {
-      return NextResponse.json(
-        { error: "Тикет закрыт" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Тикет закрыт" }, { status: 400 });
     }
+
+    const messageText = rawMessage || "Скриншот";
 
     const { data: createdMessage, error: messageError } = await supabase
       .from("support_messages")
       .insert({
         ticket_id: ticketId,
         sender_id: user.id,
-        message,
+        message: messageText,
+        is_internal: false,
       })
       .select()
       .single();
 
-    if (messageError) {
+    if (messageError || !createdMessage) {
       console.error(messageError);
 
       return NextResponse.json(
         { error: "Не удалось отправить сообщение" },
         { status: 500 }
       );
+    }
+
+    const uploadedAttachments = [];
+
+    for (const file of imageFiles) {
+      const safeName = sanitizeFileName(file.name);
+      const filePath = `${ticketId}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("support-attachments")
+        .upload(filePath, file, {
+          contentType: file.type,
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error(uploadError);
+
+        return NextResponse.json(
+          { error: "Сообщение создано, но скриншот загрузить не удалось" },
+          { status: 500 }
+        );
+      }
+
+      const { data: attachment, error: attachmentError } = await supabase
+        .from("support_attachments")
+        .insert({
+          ticket_id: ticketId,
+          message_id: createdMessage.id,
+          uploaded_by: user.id,
+          file_name: file.name,
+          file_path: filePath,
+          file_size: file.size,
+          mime_type: file.type,
+        })
+        .select()
+        .single();
+
+      if (attachmentError || !attachment) {
+        console.error(attachmentError);
+
+        return NextResponse.json(
+          { error: "Сообщение создано, но вложение сохранить не удалось" },
+          { status: 500 }
+        );
+      }
+
+      uploadedAttachments.push(await createSignedAttachment(supabase, attachment));
     }
 
     const nextStatus = isAdmin ? "waiting_user" : "in_progress";
@@ -128,7 +225,10 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     return NextResponse.json({
       success: true,
-      message: createdMessage,
+      message: {
+        ...createdMessage,
+        attachments: uploadedAttachments,
+      },
       ticket: updatedTicket,
     });
   } catch (error) {
