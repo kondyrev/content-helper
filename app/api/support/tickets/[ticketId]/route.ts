@@ -166,6 +166,20 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       updates.priority = body.priority;
     }
 
+    if (body.assigned_admin_id !== undefined) {
+      if (
+        body.assigned_admin_id !== null &&
+        typeof body.assigned_admin_id !== "string"
+      ) {
+        return NextResponse.json(
+          { error: "Некорректный ответственный" },
+          { status: 400 }
+        );
+      }
+
+      updates.assigned_admin_id = body.assigned_admin_id;
+    }
+
     const { data: ticket, error } = await supabase
       .from("support_tickets")
       .update(updates)

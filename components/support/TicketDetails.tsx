@@ -66,6 +66,7 @@ export default function TicketDetails({
 
   const isClosedForUser = ticket.status === "closed" && !isAdmin;
   const isResolvedForUser = ticket.status === "resolved" && !isAdmin;
+  const isAssignedToCurrentAdmin = ticket.assigned_admin_id === currentUserId;
 
   async function handleSendMessage() {
     if (!ticket || !message.trim() || isClosedForUser) return;
@@ -120,6 +121,7 @@ export default function TicketDetails({
   async function handleUpdateTicket(updates: {
     status?: TicketStatus;
     priority?: TicketPriority;
+    assigned_admin_id?: string | null;
   }) {
     if (!ticket) return;
 
@@ -178,6 +180,16 @@ export default function TicketDetails({
               <span className="rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1 text-xs text-violet-200">
                 {SUPPORT_PRIORITY_LABELS[ticket.priority]}
               </span>
+
+              {isAdmin && (
+                <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-100">
+                  {ticket.assigned_admin_id
+                    ? isAssignedToCurrentAdmin
+                      ? "Назначен на вас"
+                      : "Назначен"
+                    : "Без ответственного"}
+                </span>
+              )}
             </div>
 
             <h2 className="mt-4 text-xl font-bold text-white md:text-2xl">
@@ -199,6 +211,28 @@ export default function TicketDetails({
 
           {isAdmin && (
             <div className="grid w-full gap-3 md:w-[320px]">
+              <button
+                type="button"
+                disabled={isUpdating}
+                onClick={() =>
+                  handleUpdateTicket({
+                    assigned_admin_id: isAssignedToCurrentAdmin
+                      ? null
+                      : currentUserId,
+                    status: isAssignedToCurrentAdmin
+                      ? ticket.status
+                      : "in_progress",
+                  })
+                }
+                className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  isAssignedToCurrentAdmin
+                    ? "border-white/10 bg-white/[0.04] text-zinc-300 hover:bg-white/[0.07] hover:text-white"
+                    : "border-cyan-400/30 bg-cyan-400/10 text-cyan-100 hover:bg-cyan-400/20"
+                }`}
+              >
+                {isAssignedToCurrentAdmin ? "Снять с себя" : "Взять в работу"}
+              </button>
+
               <label className="space-y-2">
                 <span className="text-xs text-zinc-500">Статус</span>
 
