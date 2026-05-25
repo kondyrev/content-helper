@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase";
 import SupportHeader from "./SupportHeader";
@@ -73,7 +74,17 @@ export default function SupportPage() {
   return (
     <div className="min-h-screen bg-black px-4 py-6 text-white md:px-6">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-        <SupportHeader />
+        <div className="flex flex-col gap-4">
+          <Link
+            href="/dashboard"
+            className="inline-flex w-fit items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-zinc-300 backdrop-blur-xl transition hover:border-violet-400/40 hover:bg-white/[0.07] hover:text-white"
+          >
+            <span>←</span>
+            Вернуться в Dashboard
+          </Link>
+
+          <SupportHeader />
+        </div>
 
         {isLoading ? (
           <div className="flex h-[400px] items-center justify-center rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl">
