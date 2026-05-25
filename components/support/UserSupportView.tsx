@@ -248,6 +248,7 @@ export default function UserSupportView() {
             <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
               <div className={selectedTicketId ? "hidden lg:block" : "block"}>
                 <TicketList
+                  variant="user"
                   tickets={filteredTickets}
                   selectedTicketId={selectedTicketId}
                   onSelectTicket={loadTicketDetails}

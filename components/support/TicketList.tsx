@@ -8,6 +8,7 @@ interface Props {
   tickets: SupportTicket[];
   selectedTicketId?: string | null;
   onSelectTicket: (ticketId: string) => void;
+  variant?: "user" | "admin";
 }
 
 function formatDate(value: string) {
@@ -19,10 +20,16 @@ function formatDate(value: string) {
   });
 }
 
-function getWorkflowHint(ticket: SupportTicket) {
+function getWorkflowHint(
+  ticket: SupportTicket,
+  variant: "user" | "admin"
+) {
   if (ticket.status === "waiting_user") {
     return {
-      label: "Ждём пользователя",
+      label:
+        variant === "admin"
+          ? "Ждём пользователя"
+          : "Ждём поддержку",
       className:
         "border-amber-400/20 bg-amber-400/10 text-amber-100",
     };
@@ -30,7 +37,10 @@ function getWorkflowHint(ticket: SupportTicket) {
 
   if (ticket.status === "in_progress" || ticket.status === "open") {
     return {
-      label: "Нужен ответ",
+      label:
+        variant === "admin"
+          ? "Нужен ответ"
+          : "Открыт",
       className:
         "border-emerald-400/20 bg-emerald-400/10 text-emerald-100",
     };
@@ -59,13 +69,16 @@ export default function TicketList({
   tickets,
   selectedTicketId,
   onSelectTicket,
+  variant = "admin",
 }: Props) {
   return (
     <div className="grid max-h-[calc(100vh-260px)] gap-3 overflow-y-auto pr-1">
       {tickets.map((ticket) => {
         const isSelected = selectedTicketId === ticket.id;
         const unreadCount = ticket.unread_count || 0;
-        const workflowHint = getWorkflowHint(ticket);
+
+        const workflowHint = getWorkflowHint(ticket, variant);
+
         const needsAttention =
           unreadCount > 0 ||
           ticket.status === "open" ||
@@ -154,7 +167,7 @@ export default function TicketList({
                 {SUPPORT_PRIORITY_LABELS[ticket.priority]}
               </span>
 
-              {ticket.assigned_admin_id && (
+              {variant === "admin" && ticket.assigned_admin_id && (
                 <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-100">
                   Назначен
                 </span>
