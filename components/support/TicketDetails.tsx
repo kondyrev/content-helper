@@ -20,6 +20,7 @@ interface Props {
   messages: SupportMessage[];
   currentUserId: string;
   isAdmin?: boolean;
+  onBack?: () => void;
   onMessageCreated?: (message: SupportMessage) => void;
   onTicketUpdated?: (ticket: SupportTicket) => void;
 }
@@ -29,11 +30,11 @@ export default function TicketDetails({
   messages,
   currentUserId,
   isAdmin = false,
+  onBack,
   onMessageCreated,
   onTicketUpdated,
 }: Props) {
   const supabase = useMemo(() => createClient(), []);
-
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const [message, setMessage] = useState("");
@@ -42,26 +43,21 @@ export default function TicketDetails({
   const [sendError, setSendError] = useState("");
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   if (!ticket) {
     return (
-      <div className="flex min-h-[600px] items-center justify-center rounded-[28px] border border-white/10 bg-white/[0.03] p-8 backdrop-blur-2xl">
+      <div className="hidden min-h-[600px] items-center justify-center rounded-[28px] border border-white/10 bg-white/[0.03] p-8 backdrop-blur-2xl lg:flex">
         <div className="max-w-sm text-center">
           <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] text-3xl">
             💬
           </div>
 
-          <h3 className="text-xl font-semibold text-white">
-            Выберите тикет
-          </h3>
+          <h3 className="text-xl font-semibold text-white">Выберите тикет</h3>
 
           <p className="mt-3 text-sm leading-7 text-zinc-400">
-            Откройте обращение слева, чтобы просмотреть переписку и ответить
-            пользователю.
+            Откройте обращение слева, чтобы просмотреть переписку и ответить.
           </p>
         </div>
       </div>
@@ -103,7 +99,6 @@ export default function TicketDetails({
       }
 
       setMessage("");
-
       onMessageCreated?.(data.message);
 
       if (data.ticket) {
@@ -161,8 +156,18 @@ export default function TicketDetails({
   }
 
   return (
-    <div className="flex h-[calc(100vh-180px)] flex-col overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03] backdrop-blur-2xl">
-      <div className="sticky top-0 z-10 border-b border-white/10 bg-black/30 px-5 py-5 backdrop-blur-2xl">
+    <div className="flex h-[calc(100vh-150px)] flex-col overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03] backdrop-blur-2xl lg:h-[calc(100vh-180px)]">
+      <div className="sticky top-0 z-10 border-b border-white/10 bg-black/30 px-4 py-4 backdrop-blur-2xl md:px-5 md:py-5">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="mb-4 inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/[0.07] hover:text-white lg:hidden"
+          >
+            <span>←</span>
+            К списку тикетов
+          </button>
+        )}
+
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -175,7 +180,7 @@ export default function TicketDetails({
               </span>
             </div>
 
-            <h2 className="mt-4 text-2xl font-bold text-white">
+            <h2 className="mt-4 text-xl font-bold text-white md:text-2xl">
               {ticket.subject}
             </h2>
 
@@ -240,7 +245,7 @@ export default function TicketDetails({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-6">
+      <div className="flex-1 overflow-y-auto px-4 py-5 md:px-5 md:py-6">
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="max-w-sm text-center">
@@ -270,7 +275,7 @@ export default function TicketDetails({
                   }`}
                 >
                   <div
-                    className={`max-w-[90%] rounded-[24px] px-5 py-4 shadow-lg transition-all md:max-w-[75%] ${
+                    className={`max-w-[92%] rounded-[24px] px-5 py-4 shadow-lg transition-all md:max-w-[75%] ${
                       isMine
                         ? "bg-violet-500 text-white shadow-violet-500/10"
                         : "border border-white/10 bg-white/[0.04] text-zinc-100"

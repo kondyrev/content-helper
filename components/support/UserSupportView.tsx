@@ -63,6 +63,12 @@ export default function UserSupportView() {
     });
   }, [tickets, search, statusFilter, priorityFilter]);
 
+  const handleBackToList = useCallback(() => {
+    setSelectedTicketId(null);
+    setSelectedTicket(null);
+    setMessages([]);
+  }, []);
+
   const getAccessToken = useCallback(async () => {
     const {
       data: { session },
@@ -175,11 +181,9 @@ export default function UserSupportView() {
       filteredTickets.length > 0 &&
       !filteredTickets.some((ticket) => ticket.id === selectedTicketId)
     ) {
-      setSelectedTicketId(null);
-      setSelectedTicket(null);
-      setMessages([]);
+      handleBackToList();
     }
-  }, [filteredTickets, selectedTicketId]);
+  }, [filteredTickets, selectedTicketId, handleBackToList]);
 
   useEffect(() => {
     const ticketsChannel = subscribeToTickets({
@@ -236,51 +240,58 @@ export default function UserSupportView() {
         </div>
       ) : tickets.length > 0 ? (
         <div className="space-y-4">
-          <TicketFilters
-            search={search}
-            status={statusFilter}
-            priority={priorityFilter}
-            onSearchChange={setSearch}
-            onStatusChange={setStatusFilter}
-            onPriorityChange={setPriorityFilter}
-          />
+          <div className={selectedTicketId ? "hidden lg:block" : "block"}>
+            <TicketFilters
+              search={search}
+              status={statusFilter}
+              priority={priorityFilter}
+              onSearchChange={setSearch}
+              onStatusChange={setStatusFilter}
+              onPriorityChange={setPriorityFilter}
+            />
+          </div>
 
           {filteredTickets.length > 0 ? (
             <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
-              <TicketList
-                tickets={filteredTickets}
-                selectedTicketId={selectedTicketId}
-                onSelectTicket={loadTicketDetails}
-              />
-
-              {isDetailsLoading ? (
-                <div className="flex min-h-[500px] items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl">
-                  <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-white" />
-                </div>
-              ) : (
-                <TicketDetails
-                  ticket={selectedTicket}
-                  messages={messages}
-                  currentUserId={currentUserId}
-                  onMessageCreated={(newMessage) => {
-                    setMessages((prev) => [...prev, newMessage]);
-                    void loadTickets();
-                  }}
-                  onTicketUpdated={(updatedTicket) => {
-                    setSelectedTicket((prev) =>
-                      prev ? { ...prev, ...updatedTicket } : updatedTicket
-                    );
-
-                    setTickets((prev) =>
-                      prev.map((ticket) =>
-                        ticket.id === updatedTicket.id
-                          ? { ...ticket, ...updatedTicket }
-                          : ticket
-                      )
-                    );
-                  }}
+              <div className={selectedTicketId ? "hidden lg:block" : "block"}>
+                <TicketList
+                  tickets={filteredTickets}
+                  selectedTicketId={selectedTicketId}
+                  onSelectTicket={loadTicketDetails}
                 />
-              )}
+              </div>
+
+              <div className={selectedTicketId ? "block" : "hidden lg:block"}>
+                {isDetailsLoading ? (
+                  <div className="flex min-h-[500px] items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl">
+                    <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-white" />
+                  </div>
+                ) : (
+                  <TicketDetails
+                    ticket={selectedTicket}
+                    messages={messages}
+                    currentUserId={currentUserId}
+                    onBack={handleBackToList}
+                    onMessageCreated={(newMessage) => {
+                      setMessages((prev) => [...prev, newMessage]);
+                      void loadTickets();
+                    }}
+                    onTicketUpdated={(updatedTicket) => {
+                      setSelectedTicket((prev) =>
+                        prev ? { ...prev, ...updatedTicket } : updatedTicket
+                      );
+
+                      setTickets((prev) =>
+                        prev.map((ticket) =>
+                          ticket.id === updatedTicket.id
+                            ? { ...ticket, ...updatedTicket }
+                            : ticket
+                        )
+                      );
+                    }}
+                  />
+                )}
+              </div>
             </div>
           ) : (
             <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-10 text-center text-zinc-400">

@@ -60,6 +60,12 @@ export default function AdminSupportView() {
     });
   }, [tickets, search, statusFilter, priorityFilter]);
 
+  const handleBackToList = useCallback(() => {
+    setSelectedTicketId(null);
+    setSelectedTicket(null);
+    setMessages([]);
+  }, []);
+
   const getAccessToken = useCallback(async () => {
     const {
       data: { session },
@@ -172,11 +178,9 @@ export default function AdminSupportView() {
       filteredTickets.length > 0 &&
       !filteredTickets.some((ticket) => ticket.id === selectedTicketId)
     ) {
-      setSelectedTicketId(null);
-      setSelectedTicket(null);
-      setMessages([]);
+      handleBackToList();
     }
-  }, [filteredTickets, selectedTicketId]);
+  }, [filteredTickets, selectedTicketId, handleBackToList]);
 
   useEffect(() => {
     const ticketsChannel = subscribeToTickets({
@@ -231,80 +235,94 @@ export default function AdminSupportView() {
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-          <p className="text-sm text-zinc-400">Всего тикетов</p>
-          <p className="mt-2 text-3xl font-bold text-white">{tickets.length}</p>
-        </div>
+      <div className={selectedTicketId ? "hidden lg:block" : "block"}>
+        <div className="grid gap-4 md:grid-cols-4">
+          <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+            <p className="text-sm text-zinc-400">Всего тикетов</p>
+            <p className="mt-2 text-3xl font-bold text-white">
+              {tickets.length}
+            </p>
+          </div>
 
-        <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-          <p className="text-sm text-zinc-400">Открытые</p>
-          <p className="mt-2 text-3xl font-bold text-white">
-            {tickets.filter((ticket) => ticket.status === "open").length}
-          </p>
-        </div>
+          <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+            <p className="text-sm text-zinc-400">Открытые</p>
+            <p className="mt-2 text-3xl font-bold text-white">
+              {tickets.filter((ticket) => ticket.status === "open").length}
+            </p>
+          </div>
 
-        <div className="rounded-3xl border border-red-400/20 bg-red-400/10 p-5">
-          <p className="text-sm text-red-100/80">Срочные</p>
-          <p className="mt-2 text-3xl font-bold text-white">
-            {tickets.filter((ticket) => ticket.priority === "urgent").length}
-          </p>
-        </div>
+          <div className="rounded-3xl border border-red-400/20 bg-red-400/10 p-5">
+            <p className="text-sm text-red-100/80">Срочные</p>
+            <p className="mt-2 text-3xl font-bold text-white">
+              {tickets.filter((ticket) => ticket.priority === "urgent").length}
+            </p>
+          </div>
 
-        <div className="rounded-3xl border border-violet-400/20 bg-violet-400/10 p-5">
-          <p className="text-sm text-violet-100/80">В работе</p>
-          <p className="mt-2 text-3xl font-bold text-white">
-            {tickets.filter((ticket) => ticket.status === "in_progress").length}
-          </p>
+          <div className="rounded-3xl border border-violet-400/20 bg-violet-400/10 p-5">
+            <p className="text-sm text-violet-100/80">В работе</p>
+            <p className="mt-2 text-3xl font-bold text-white">
+              {
+                tickets.filter((ticket) => ticket.status === "in_progress")
+                  .length
+              }
+            </p>
+          </div>
         </div>
       </div>
 
-      <TicketFilters
-        search={search}
-        status={statusFilter}
-        priority={priorityFilter}
-        onSearchChange={setSearch}
-        onStatusChange={setStatusFilter}
-        onPriorityChange={setPriorityFilter}
-      />
+      <div className={selectedTicketId ? "hidden lg:block" : "block"}>
+        <TicketFilters
+          search={search}
+          status={statusFilter}
+          priority={priorityFilter}
+          onSearchChange={setSearch}
+          onStatusChange={setStatusFilter}
+          onPriorityChange={setPriorityFilter}
+        />
+      </div>
 
       {filteredTickets.length > 0 ? (
         <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
-          <TicketList
-            tickets={filteredTickets}
-            selectedTicketId={selectedTicketId}
-            onSelectTicket={loadTicketDetails}
-          />
-
-          {isDetailsLoading ? (
-            <div className="flex min-h-[500px] items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl">
-              <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-white" />
-            </div>
-          ) : (
-            <TicketDetails
-              ticket={selectedTicket}
-              messages={messages}
-              currentUserId={currentUserId}
-              isAdmin
-              onMessageCreated={(newMessage) => {
-                setMessages((prev) => [...prev, newMessage]);
-                void loadTickets();
-              }}
-              onTicketUpdated={(updatedTicket) => {
-                setSelectedTicket((prev) =>
-                  prev ? { ...prev, ...updatedTicket } : updatedTicket
-                );
-
-                setTickets((prev) =>
-                  prev.map((ticket) =>
-                    ticket.id === updatedTicket.id
-                      ? { ...ticket, ...updatedTicket }
-                      : ticket
-                  )
-                );
-              }}
+          <div className={selectedTicketId ? "hidden lg:block" : "block"}>
+            <TicketList
+              tickets={filteredTickets}
+              selectedTicketId={selectedTicketId}
+              onSelectTicket={loadTicketDetails}
             />
-          )}
+          </div>
+
+          <div className={selectedTicketId ? "block" : "hidden lg:block"}>
+            {isDetailsLoading ? (
+              <div className="flex min-h-[500px] items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl">
+                <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-white" />
+              </div>
+            ) : (
+              <TicketDetails
+                ticket={selectedTicket}
+                messages={messages}
+                currentUserId={currentUserId}
+                isAdmin
+                onBack={handleBackToList}
+                onMessageCreated={(newMessage) => {
+                  setMessages((prev) => [...prev, newMessage]);
+                  void loadTickets();
+                }}
+                onTicketUpdated={(updatedTicket) => {
+                  setSelectedTicket((prev) =>
+                    prev ? { ...prev, ...updatedTicket } : updatedTicket
+                  );
+
+                  setTickets((prev) =>
+                    prev.map((ticket) =>
+                      ticket.id === updatedTicket.id
+                        ? { ...ticket, ...updatedTicket }
+                        : ticket
+                    )
+                  );
+                }}
+              />
+            )}
+          </div>
         </div>
       ) : (
         <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-10 text-center text-zinc-400">
