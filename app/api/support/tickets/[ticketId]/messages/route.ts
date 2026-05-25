@@ -50,6 +50,59 @@ export async function POST(request: NextRequest, { params }: Params) {
       );
     }
 
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    const isAdmin = profile?.role === "admin";
+
+    const { data: ticket, error: ticketError } = await supabase
+      .from("support_tickets")
+      .select("*")
+      .eq("id", ticketId)
+      .single();
+
+    if (ticketError || !ticket) {
+      return NextResponse.json({ error: "Тикет не найден" }, { status: 404 });
+    }
+
+    if (ticket.status === "closed" && !isAdmin) {
+      return NextResponse.json(
+        {
+          error:
+            "Тикет закрыт. Если вопрос ещё актуален, создайте новое обращение.",
+        },
+        { status: 403 }
+      );
+    }
+
+    let updatedTicket = ticket;
+
+    if (ticket.status === "resolved" && !isAdmin) {
+      const { data: reopenedTicket, error: reopenError } = await supabase
+        .from("support_tickets")
+        .update({
+          status: "open",
+          closed_at: null,
+        })
+        .eq("id", ticketId)
+        .select()
+        .single();
+
+      if (reopenError) {
+        console.error(reopenError);
+
+        return NextResponse.json(
+          { error: "Не удалось переоткрыть тикет" },
+          { status: 500 }
+        );
+      }
+
+      updatedTicket = reopenedTicket;
+    }
+
     const { data: createdMessage, error } = await supabase
       .from("support_messages")
       .insert({
@@ -73,6 +126,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({
       success: true,
       message: createdMessage,
+      ticket: updatedTicket,
     });
   } catch (error) {
     console.error("Create support message error:", error);

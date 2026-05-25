@@ -37,6 +37,7 @@ export default function TicketDetails({
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [sendError, setSendError] = useState("");
 
   if (!ticket) {
     return (
@@ -46,11 +47,15 @@ export default function TicketDetails({
     );
   }
 
+  const isClosedForUser = ticket.status === "closed" && !isAdmin;
+  const isResolvedForUser = ticket.status === "resolved" && !isAdmin;
+
   async function handleSendMessage() {
-    if (!ticket || !message.trim()) return;
+    if (!ticket || !message.trim() || isClosedForUser) return;
 
     try {
       setIsSending(true);
+      setSendError("");
 
       const {
         data: { session },
@@ -77,9 +82,19 @@ export default function TicketDetails({
       }
 
       setMessage("");
+
       onMessageCreated?.(data.message);
+
+      if (data.ticket) {
+        onTicketUpdated?.(data.ticket);
+      }
     } catch (error) {
       console.error("Send support message error:", error);
+      setSendError(
+        error instanceof Error
+          ? error.message
+          : "Не удалось отправить сообщение"
+      );
     } finally {
       setIsSending(false);
     }
@@ -233,23 +248,45 @@ export default function TicketDetails({
       </div>
 
       <div className="border-t border-white/10 p-4">
-        <div className="flex flex-col gap-3 md:flex-row">
-          <textarea
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            placeholder="Напишите сообщение..."
-            rows={2}
-            className="min-h-[52px] flex-1 resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-400/50"
-          />
+        {isClosedForUser ? (
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-zinc-400">
+            Этот тикет закрыт. Если вопрос ещё актуален, создайте новое
+            обращение.
+          </div>
+        ) : (
+          <>
+            {isResolvedForUser && (
+              <div className="mb-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-100">
+                Тикет отмечен как решённый. Если вы отправите новое сообщение,
+                он снова станет открытым.
+              </div>
+            )}
 
-          <button
-            onClick={handleSendMessage}
-            disabled={isSending || !message.trim()}
-            className="rounded-2xl bg-violet-500 px-5 py-3 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isSending ? "Отправка..." : "Отправить"}
-          </button>
-        </div>
+            {sendError && (
+              <div className="mb-3 rounded-2xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-100">
+                {sendError}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3 md:flex-row">
+              <textarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder="Напишите сообщение..."
+                rows={2}
+                className="min-h-[52px] flex-1 resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-400/50"
+              />
+
+              <button
+                onClick={handleSendMessage}
+                disabled={isSending || !message.trim()}
+                className="rounded-2xl bg-violet-500 px-5 py-3 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSending ? "Отправка..." : "Отправить"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
