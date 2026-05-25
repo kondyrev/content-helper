@@ -9,7 +9,6 @@ import {
   SUPPORT_STATUS_LABELS,
 } from "@/lib/support/constants";
 import {
-  SupportAttachment,
   SupportMessage,
   SupportTicket,
   TicketPriority,
@@ -77,7 +76,6 @@ export default function TicketDetails({
 
   function handleFilesChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files || []);
-
     const imageFiles = files.filter((file) => file.type.startsWith("image/"));
 
     if (imageFiles.length !== files.length) {
@@ -98,13 +96,13 @@ export default function TicketDetails({
   }
 
   async function uploadAttachments(messageId: string) {
-    if (!ticket || selectedFiles.length === 0) return [];
+    if (!ticket || selectedFiles.length === 0) return;
 
     const {
       data: { session },
     } = await supabase.auth.getSession();
 
-    if (!session?.access_token) return [];
+    if (!session?.access_token) return;
 
     const formData = new FormData();
 
@@ -130,8 +128,6 @@ export default function TicketDetails({
     if (!response.ok) {
       throw new Error(data.error || "Не удалось загрузить изображения");
     }
-
-    return (data.attachments || []) as SupportAttachment[];
   }
 
   async function handleSendMessage() {
@@ -140,6 +136,8 @@ export default function TicketDetails({
     try {
       setIsSending(true);
       setSendError("");
+
+      const hasFiles = selectedFiles.length > 0;
 
       const {
         data: { session },
@@ -167,23 +165,23 @@ export default function TicketDetails({
         throw new Error(data.error || "Не удалось отправить сообщение");
       }
 
-      const uploadedAttachments = await uploadAttachments(data.message.id);
-
-      const createdMessage: SupportMessage = {
-        ...data.message,
-        attachments: uploadedAttachments,
-      };
+      await uploadAttachments(data.message.id);
 
       setMessage("");
       clearFiles();
-
-      onMessageCreated?.(createdMessage);
 
       if (data.ticket) {
         onTicketUpdated?.(data.ticket);
       }
 
-      onRefresh?.();
+      if (hasFiles) {
+        onRefresh?.();
+      } else {
+        onMessageCreated?.({
+          ...data.message,
+          attachments: [],
+        });
+      }
     } catch (error) {
       console.error("Send support message error:", error);
 
