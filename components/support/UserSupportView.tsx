@@ -8,6 +8,10 @@ import {
   TicketPriority,
   TicketStatus,
 } from "@/lib/support/types";
+import {
+  subscribeToTicketMessages,
+  subscribeToTickets,
+} from "@/lib/support/realtime";
 import EmptySupportState from "./EmptySupportState";
 import CreateTicketButton from "./CreateTicketButton";
 import CreateTicketDialog from "./CreateTicketDialog";
@@ -152,6 +156,49 @@ export default function UserSupportView() {
     }
   }, [filteredTickets, selectedTicketId]);
 
+  useEffect(() => {
+    const ticketsChannel = subscribeToTickets({
+      supabase,
+      onChange: () => {
+        void loadTickets();
+      },
+    });
+
+    return () => {
+      void supabase.removeChannel(ticketsChannel);
+    };
+  }, [supabase, loadTickets]);
+
+  useEffect(() => {
+    if (!selectedTicketId) return;
+
+    const messagesChannel = subscribeToTicketMessages({
+      supabase,
+      ticketId: selectedTicketId,
+      onInsert: (payload) => {
+        const newMessage = (
+          payload as {
+            new: SupportMessage;
+          }
+        ).new;
+
+        setMessages((prev) => {
+          if (prev.some((message) => message.id === newMessage.id)) {
+            return prev;
+          }
+
+          return [...prev, newMessage];
+        });
+
+        void loadTickets();
+      },
+    });
+
+    return () => {
+      void supabase.removeChannel(messagesChannel);
+    };
+  }, [supabase, selectedTicketId, loadTickets]);
+
   return (
     <>
       <div className="flex justify-end">
@@ -193,6 +240,19 @@ export default function UserSupportView() {
                   onMessageCreated={(newMessage) => {
                     setMessages((prev) => [...prev, newMessage]);
                     void loadTickets();
+                  }}
+                  onTicketUpdated={(updatedTicket) => {
+                    setSelectedTicket((prev) =>
+                      prev ? { ...prev, ...updatedTicket } : updatedTicket
+                    );
+
+                    setTickets((prev) =>
+                      prev.map((ticket) =>
+                        ticket.id === updatedTicket.id
+                          ? { ...ticket, ...updatedTicket }
+                          : ticket
+                      )
+                    );
                   }}
                 />
               )}

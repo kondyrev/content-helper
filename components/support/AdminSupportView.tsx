@@ -8,6 +8,10 @@ import {
   TicketPriority,
   TicketStatus,
 } from "@/lib/support/types";
+import {
+  subscribeToTicketMessages,
+  subscribeToTickets,
+} from "@/lib/support/realtime";
 import TicketList from "./TicketList";
 import TicketDetails from "./TicketDetails";
 import TicketFilters from "./TicketFilters";
@@ -148,6 +152,49 @@ export default function AdminSupportView() {
       setMessages([]);
     }
   }, [filteredTickets, selectedTicketId]);
+
+  useEffect(() => {
+    const ticketsChannel = subscribeToTickets({
+      supabase,
+      onChange: () => {
+        void loadTickets();
+      },
+    });
+
+    return () => {
+      void supabase.removeChannel(ticketsChannel);
+    };
+  }, [supabase, loadTickets]);
+
+  useEffect(() => {
+    if (!selectedTicketId) return;
+
+    const messagesChannel = subscribeToTicketMessages({
+      supabase,
+      ticketId: selectedTicketId,
+      onInsert: (payload) => {
+        const newMessage = (
+          payload as {
+            new: SupportMessage;
+          }
+        ).new;
+
+        setMessages((prev) => {
+          if (prev.some((message) => message.id === newMessage.id)) {
+            return prev;
+          }
+
+          return [...prev, newMessage];
+        });
+
+        void loadTickets();
+      },
+    });
+
+    return () => {
+      void supabase.removeChannel(messagesChannel);
+    };
+  }, [supabase, selectedTicketId, loadTickets]);
 
   if (isLoading) {
     return (
