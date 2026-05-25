@@ -41,11 +41,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const body = await request.json();
+
     const message = body.message?.trim();
 
     if (!message) {
       return NextResponse.json(
-        { error: "Сообщение не может быть пустым" },
+        { error: "Сообщение обязательно" },
         { status: 400 }
       );
     }
@@ -65,63 +66,65 @@ export async function POST(request: NextRequest, { params }: Params) {
       .single();
 
     if (ticketError || !ticket) {
-      return NextResponse.json({ error: "Тикет не найден" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Тикет не найден" },
+        { status: 404 }
+      );
+    }
+
+    if (!isAdmin && ticket.user_id !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     if (ticket.status === "closed" && !isAdmin) {
       return NextResponse.json(
-        {
-          error:
-            "Тикет закрыт. Если вопрос ещё актуален, создайте новое обращение.",
-        },
-        { status: 403 }
+        { error: "Тикет закрыт" },
+        { status: 400 }
       );
     }
 
-    let updatedTicket = ticket;
-
-    if (ticket.status === "resolved" && !isAdmin) {
-      const { data: reopenedTicket, error: reopenError } = await supabase
-        .from("support_tickets")
-        .update({
-          status: "open",
-          closed_at: null,
-        })
-        .eq("id", ticketId)
-        .select()
-        .single();
-
-      if (reopenError) {
-        console.error(reopenError);
-
-        return NextResponse.json(
-          { error: "Не удалось переоткрыть тикет" },
-          { status: 500 }
-        );
-      }
-
-      updatedTicket = reopenedTicket;
-    }
-
-    const { data: createdMessage, error } = await supabase
+    const { data: createdMessage, error: messageError } = await supabase
       .from("support_messages")
       .insert({
         ticket_id: ticketId,
         sender_id: user.id,
         message,
-        is_internal: false,
       })
       .select()
       .single();
 
-    if (error) {
-      console.error(error);
+    if (messageError) {
+      console.error(messageError);
 
       return NextResponse.json(
         { error: "Не удалось отправить сообщение" },
         { status: 500 }
       );
     }
+
+    const nextStatus = isAdmin ? "waiting_user" : "in_progress";
+
+    const ticketUpdates: Record<string, string | null> = {
+      status: nextStatus,
+      closed_at: null,
+    };
+
+    if (isAdmin && !ticket.assigned_admin_id) {
+      ticketUpdates.assigned_admin_id = user.id;
+    }
+
+    const { data: updatedTicket } = await supabase
+      .from("support_tickets")
+      .update(ticketUpdates)
+      .eq("id", ticketId)
+      .select()
+      .single();
+
+    await supabase.from("support_ticket_reads").upsert({
+      ticket_id: ticketId,
+      user_id: user.id,
+      last_read_at: new Date().toISOString(),
+    });
 
     return NextResponse.json({
       success: true,
