@@ -28,6 +28,7 @@ export default function TicketList({
     <div className="grid max-h-[calc(100vh-260px)] gap-3 overflow-y-auto pr-1">
       {tickets.map((ticket) => {
         const isSelected = selectedTicketId === ticket.id;
+        const unreadCount = ticket.unread_count || 0;
 
         return (
           <button
@@ -42,7 +43,11 @@ export default function TicketList({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-violet-400" />
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      unreadCount > 0 ? "bg-emerald-400" : "bg-violet-400"
+                    }`}
+                  />
 
                   <p className="truncate text-xs text-zinc-400">
                     {ticket.customer_email || "Клиент"}
@@ -54,13 +59,25 @@ export default function TicketList({
                 </h3>
               </div>
 
-              <span className="shrink-0 text-xs text-zinc-500">
-                {formatDate(ticket.last_message_at)}
-              </span>
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                <span className="text-xs text-zinc-500">
+                  {formatDate(ticket.last_message_at)}
+                </span>
+
+                {unreadCount > 0 && (
+                  <span className="rounded-full bg-emerald-400 px-2.5 py-1 text-xs font-semibold text-black">
+                    {unreadCount}
+                  </span>
+                )}
+              </div>
             </div>
 
             {ticket.last_message_preview && (
-              <p className="mt-3 line-clamp-2 text-sm leading-6 text-zinc-400">
+              <p
+                className={`mt-3 line-clamp-2 text-sm leading-6 ${
+                  unreadCount > 0 ? "text-zinc-200" : "text-zinc-400"
+                }`}
+              >
                 {ticket.last_message_preview}
               </p>
             )}

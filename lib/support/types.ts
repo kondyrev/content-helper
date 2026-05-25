@@ -24,6 +24,7 @@ export interface SupportTicket {
   customer_email?: string | null;
   last_message_preview?: string | null;
   messages_count?: number;
+  unread_count?: number;
 }
 
 export interface SupportMessage {

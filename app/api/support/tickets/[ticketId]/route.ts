@@ -31,6 +31,15 @@ export async function GET(request: NextRequest, { params }: Params) {
       }
     );
 
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { data: ticket, error: ticketError } = await supabase
       .from("support_tickets")
       .select("*")
@@ -53,6 +62,12 @@ export async function GET(request: NextRequest, { params }: Params) {
         { status: 500 }
       );
     }
+
+    await supabase.from("support_ticket_reads").upsert({
+      ticket_id: ticketId,
+      user_id: user.id,
+      last_read_at: new Date().toISOString(),
+    });
 
     return NextResponse.json({
       ticket,
