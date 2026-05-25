@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { SupportAttachment } from "@/lib/support/types";
 
 interface Props {
@@ -14,21 +13,14 @@ function isImage(mimeType?: string | null) {
 function formatFileSize(bytes?: number | null) {
   if (!bytes) return "";
 
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
 
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export default function MessageAttachments({ attachments }: Props) {
-  if (attachments.length === 0) {
-    return null;
-  }
+  if (!attachments.length) return null;
 
   return (
     <div className="mt-4 flex flex-col gap-3">
@@ -42,16 +34,13 @@ export default function MessageAttachments({ attachments }: Props) {
               href={attachment.signed_url}
               target="_blank"
               rel="noreferrer"
-              className="group overflow-hidden rounded-2xl border border-white/10 bg-black/20 transition hover:border-violet-400/40"
+              className="group block overflow-hidden rounded-2xl border border-white/10 bg-black/20 transition hover:border-violet-400/40"
             >
-              <div className="relative h-[220px] w-full overflow-hidden">
-                <Image
-                  src={attachment.signed_url}
-                  alt={attachment.file_name}
-                  fill
-                  className="object-cover transition duration-300 group-hover:scale-[1.02]"
-                />
-              </div>
+              <img
+                src={attachment.signed_url}
+                alt={attachment.file_name}
+                className="max-h-[280px] w-full rounded-t-2xl object-contain bg-black"
+              />
 
               <div className="flex items-center justify-between gap-3 p-3">
                 <div className="min-w-0">
