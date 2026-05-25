@@ -6,7 +6,6 @@ import {
   SupportMessage,
   SupportTicket,
   TicketPriority,
-  TicketStatus,
 } from "@/lib/support/types";
 import {
   subscribeToTicketMessages,
@@ -14,7 +13,7 @@ import {
 } from "@/lib/support/realtime";
 import TicketList from "./TicketList";
 import TicketDetails from "./TicketDetails";
-import TicketFilters from "./TicketFilters";
+import TicketFilters, { TicketWorkflowFilter } from "./TicketFilters";
 
 type TicketDetailsResponse = {
   ticket: SupportTicket;
@@ -35,7 +34,8 @@ export default function AdminSupportView() {
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | TicketStatus>("all");
+  const [statusFilter, setStatusFilter] =
+    useState<TicketWorkflowFilter>("all");
   const [priorityFilter, setPriorityFilter] = useState<"all" | TicketPriority>(
     "all"
   );
@@ -51,7 +51,10 @@ export default function AdminSupportView() {
         ticket.last_message_preview?.toLowerCase().includes(normalizedSearch);
 
       const matchesStatus =
-        statusFilter === "all" || ticket.status === statusFilter;
+        statusFilter === "all" ||
+        (statusFilter === "needs_reply" &&
+          (ticket.status === "open" || ticket.status === "in_progress")) ||
+        ticket.status === statusFilter;
 
       const matchesPriority =
         priorityFilter === "all" || ticket.priority === priorityFilter;
@@ -166,7 +169,7 @@ export default function AdminSupportView() {
     void loadTickets();
   }, [loadTickets]);
 
-   useEffect(() => {
+  useEffect(() => {
     if (
       selectedTicketId &&
       filteredTickets.length > 0 &&
@@ -238,10 +241,22 @@ export default function AdminSupportView() {
             </p>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-sm text-zinc-400">Открытые</p>
+          <div className="rounded-3xl border border-emerald-400/20 bg-emerald-400/10 p-5">
+            <p className="text-sm text-emerald-100/80">Ожидают ответа</p>
             <p className="mt-2 text-3xl font-bold text-white">
-              {tickets.filter((ticket) => ticket.status === "open").length}
+              {
+                tickets.filter(
+                  (ticket) =>
+                    ticket.status === "open" || ticket.status === "in_progress"
+                ).length
+              }
+            </p>
+          </div>
+
+          <div className="rounded-3xl border border-amber-400/20 bg-amber-400/10 p-5">
+            <p className="text-sm text-amber-100/80">Ждём пользователя</p>
+            <p className="mt-2 text-3xl font-bold text-white">
+              {tickets.filter((ticket) => ticket.status === "waiting_user").length}
             </p>
           </div>
 
@@ -249,16 +264,6 @@ export default function AdminSupportView() {
             <p className="text-sm text-red-100/80">Срочные</p>
             <p className="mt-2 text-3xl font-bold text-white">
               {tickets.filter((ticket) => ticket.priority === "urgent").length}
-            </p>
-          </div>
-
-          <div className="rounded-3xl border border-violet-400/20 bg-violet-400/10 p-5">
-            <p className="text-sm text-violet-100/80">В работе</p>
-            <p className="mt-2 text-3xl font-bold text-white">
-              {
-                tickets.filter((ticket) => ticket.status === "in_progress")
-                  .length
-              }
             </p>
           </div>
         </div>

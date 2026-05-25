@@ -6,7 +6,6 @@ import {
   SupportMessage,
   SupportTicket,
   TicketPriority,
-  TicketStatus,
 } from "@/lib/support/types";
 import {
   subscribeToTicketMessages,
@@ -17,7 +16,9 @@ import CreateTicketButton from "./CreateTicketButton";
 import CreateTicketDialog from "./CreateTicketDialog";
 import TicketDetails from "./TicketDetails";
 import TicketList from "./TicketList";
-import TicketFilters from "./TicketFilters";
+import TicketFilters, { TicketWorkflowFilter } from "./TicketFilters";
+
+
 
 type TicketDetailsResponse = {
   ticket: SupportTicket;
@@ -39,7 +40,8 @@ export default function UserSupportView() {
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | TicketStatus>("all");
+  const [statusFilter, setStatusFilter] =
+    useState<TicketWorkflowFilter>("all");
   const [priorityFilter, setPriorityFilter] = useState<"all" | TicketPriority>(
     "all"
   );
@@ -54,7 +56,10 @@ export default function UserSupportView() {
         ticket.last_message_preview?.toLowerCase().includes(normalizedSearch);
 
       const matchesStatus =
-        statusFilter === "all" || ticket.status === statusFilter;
+        statusFilter === "all" ||
+        (statusFilter === "needs_reply" &&
+          (ticket.status === "open" || ticket.status === "in_progress")) ||
+        ticket.status === statusFilter;
 
       const matchesPriority =
         priorityFilter === "all" || ticket.priority === priorityFilter;
@@ -148,12 +153,7 @@ export default function UserSupportView() {
 
         setTickets((prev) =>
           prev.map((ticket) =>
-            ticket.id === ticketId
-              ? {
-                  ...ticket,
-                  unread_count: 0,
-                }
-              : ticket
+            ticket.id === ticketId ? { ...ticket, unread_count: 0 } : ticket
           )
         );
       } catch (error) {
@@ -199,11 +199,7 @@ export default function UserSupportView() {
       supabase,
       ticketId: selectedTicketId,
       onInsert: (payload) => {
-        const newMessage = (
-          payload as {
-            new: SupportMessage;
-          }
-        ).new;
+        const newMessage = (payload as { new: SupportMessage }).new;
 
         setMessages((prev) => {
           if (prev.some((message) => message.id === newMessage.id)) {
