@@ -25,7 +25,7 @@ export const SUPPORT_PRIORITY_LABELS: Record<TicketPriority, string> = {
 export const SUPPORT_STATUS_LABELS: Record<TicketStatus, string> = {
   open: "Открыт",
   in_progress: "В работе",
-  waiting_user: "Ожидает ответа",
+  waiting_user: "Ждём пользователя",
   resolved: "Решён",
   closed: "Закрыт",
 };
