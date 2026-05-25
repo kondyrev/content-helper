@@ -49,7 +49,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const { data: ticket, error: ticketError } = await supabase
       .from("support_tickets")
-      .select("id,status")
+      .select("id")
       .eq("id", ticketId)
       .single();
 
@@ -62,15 +62,19 @@ export async function POST(request: NextRequest, { params }: Params) {
     const messageId = formData.get("messageId")?.toString() || null;
 
     if (files.length === 0) {
-      return NextResponse.json(
-        { error: "Файлы не выбраны" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Файлы не выбраны" }, { status: 400 });
     }
 
     const maxFileSize = 10 * 1024 * 1024;
 
     for (const file of files) {
+      if (!file.type.startsWith("image/")) {
+        return NextResponse.json(
+          { error: "Можно прикреплять только изображения" },
+          { status: 400 }
+        );
+      }
+
       if (file.size > maxFileSize) {
         return NextResponse.json(
           { error: `Файл ${file.name} больше 10 МБ` },
@@ -88,15 +92,14 @@ export async function POST(request: NextRequest, { params }: Params) {
       const { error: uploadError } = await supabase.storage
         .from("support-attachments")
         .upload(filePath, file, {
-          contentType: file.type || "application/octet-stream",
+          contentType: file.type,
           upsert: false,
         });
 
       if (uploadError) {
         console.error(uploadError);
-
         return NextResponse.json(
-          { error: "Не удалось загрузить файл" },
+          { error: "Не удалось загрузить изображение" },
           { status: 500 }
         );
       }
@@ -110,21 +113,27 @@ export async function POST(request: NextRequest, { params }: Params) {
           file_name: file.name,
           file_path: filePath,
           file_size: file.size,
-          mime_type: file.type || null,
+          mime_type: file.type,
         })
         .select()
         .single();
 
       if (attachmentError) {
         console.error(attachmentError);
-
         return NextResponse.json(
           { error: "Не удалось сохранить вложение" },
           { status: 500 }
         );
       }
 
-      uploadedAttachments.push(attachment);
+      const { data: signedUrlData } = await supabase.storage
+        .from("support-attachments")
+        .createSignedUrl(filePath, 60 * 60);
+
+      uploadedAttachments.push({
+        ...attachment,
+        signed_url: signedUrlData?.signedUrl || null,
+      });
     }
 
     return NextResponse.json({

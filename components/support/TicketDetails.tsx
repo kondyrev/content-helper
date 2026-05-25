@@ -145,7 +145,7 @@ export default function TicketDetails({
             Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
-            message: message.trim() || "Вложение",
+            message: message.trim() || "Скриншот",
           }),
         }
       );
@@ -468,6 +468,7 @@ export default function TicketDetails({
                   ref={fileInputRef}
                   type="file"
                   multiple
+                  accept="image/*"
                   onChange={handleFilesChange}
                   className="hidden"
                 />
