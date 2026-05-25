@@ -16,9 +16,10 @@ import CreateTicketButton from "./CreateTicketButton";
 import CreateTicketDialog from "./CreateTicketDialog";
 import TicketDetails from "./TicketDetails";
 import TicketList from "./TicketList";
-import TicketFilters, { TicketWorkflowFilter } from "./TicketFilters";
-
-
+import UserTicketFilters, {
+  matchesUserTicketFilter,
+  UserTicketFilter,
+} from "./UserTicketFilters";
 
 type TicketDetailsResponse = {
   ticket: SupportTicket;
@@ -40,8 +41,7 @@ export default function UserSupportView() {
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] =
-    useState<TicketWorkflowFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<UserTicketFilter>("all");
   const [priorityFilter, setPriorityFilter] = useState<"all" | TicketPriority>(
     "all"
   );
@@ -55,11 +55,10 @@ export default function UserSupportView() {
         ticket.subject.toLowerCase().includes(normalizedSearch) ||
         ticket.last_message_preview?.toLowerCase().includes(normalizedSearch);
 
-      const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "needs_reply" &&
-          (ticket.status === "open" || ticket.status === "in_progress")) ||
-        ticket.status === statusFilter;
+      const matchesStatus = matchesUserTicketFilter(
+        statusFilter,
+        ticket.status
+      );
 
       const matchesPriority =
         priorityFilter === "all" || ticket.priority === priorityFilter;
@@ -199,7 +198,11 @@ export default function UserSupportView() {
       supabase,
       ticketId: selectedTicketId,
       onInsert: (payload) => {
-        const newMessage = (payload as { new: SupportMessage }).new;
+        const newMessage = (
+          payload as {
+            new: SupportMessage;
+          }
+        ).new;
 
         setMessages((prev) => {
           if (prev.some((message) => message.id === newMessage.id)) {
@@ -231,7 +234,7 @@ export default function UserSupportView() {
       ) : tickets.length > 0 ? (
         <div className="space-y-4">
           <div className={selectedTicketId ? "hidden lg:block" : "block"}>
-            <TicketFilters
+            <UserTicketFilters
               search={search}
               status={statusFilter}
               priority={priorityFilter}

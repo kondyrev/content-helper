@@ -144,9 +144,11 @@ export default function TicketList({
                 </span>
               )}
 
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
-                {SUPPORT_STATUS_LABELS[ticket.status]}
-              </span>
+              {!workflowHint && (
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
+                  {SUPPORT_STATUS_LABELS[ticket.status]}
+                </span>
+              )}
 
               <span className="rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1 text-xs text-violet-200">
                 {SUPPORT_PRIORITY_LABELS[ticket.priority]}
