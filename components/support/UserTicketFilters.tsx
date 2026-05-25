@@ -8,8 +8,8 @@ import { TicketPriority, TicketStatus } from "@/lib/support/types";
 
 export type UserTicketFilter =
   | "all"
-  | "active"
   | "waiting_support"
+  | "needs_user_reply"
   | "resolved"
   | "closed";
 
@@ -27,8 +27,8 @@ const USER_FILTERS: {
   label: string;
 }[] = [
   { value: "all", label: "Все тикеты" },
-  { value: "active", label: "Открытые" },
   { value: "waiting_support", label: "Ждём поддержку" },
+  { value: "needs_user_reply", label: "Нужен мой ответ" },
   { value: "resolved", label: "Решённые" },
   { value: "closed", label: "Закрытые" },
 ];
@@ -39,11 +39,11 @@ export function matchesUserTicketFilter(
 ) {
   if (status === "all") return true;
 
-  if (status === "active") {
+  if (status === "waiting_support") {
     return ticketStatus === "open" || ticketStatus === "in_progress";
   }
 
-  if (status === "waiting_support") {
+  if (status === "needs_user_reply") {
     return ticketStatus === "waiting_user";
   }
 
@@ -69,7 +69,9 @@ export default function UserTicketFilters({
 
       <select
         value={status}
-        onChange={(event) => onStatusChange(event.target.value as UserTicketFilter)}
+        onChange={(event) =>
+          onStatusChange(event.target.value as UserTicketFilter)
+        }
         className="rounded-2xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-none focus:border-violet-400/50"
       >
         {USER_FILTERS.map((item) => (

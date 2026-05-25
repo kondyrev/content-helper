@@ -20,45 +20,32 @@ function formatDate(value: string) {
   });
 }
 
-function getWorkflowHint(
-  ticket: SupportTicket,
-  variant: "user" | "admin"
-) {
+function getWorkflowHint(ticket: SupportTicket, variant: "user" | "admin") {
   if (ticket.status === "waiting_user") {
     return {
-      label:
-        variant === "admin"
-          ? "Ждём пользователя"
-          : "Ждём поддержку",
-      className:
-        "border-amber-400/20 bg-amber-400/10 text-amber-100",
+      label: variant === "admin" ? "Ждём пользователя" : "Нужен ваш ответ",
+      className: "border-amber-400/20 bg-amber-400/10 text-amber-100",
     };
   }
 
   if (ticket.status === "in_progress" || ticket.status === "open") {
     return {
-      label:
-        variant === "admin"
-          ? "Нужен ответ"
-          : "Открыт",
-      className:
-        "border-emerald-400/20 bg-emerald-400/10 text-emerald-100",
+      label: variant === "admin" ? "Нужен ответ" : "Ждём поддержку",
+      className: "border-emerald-400/20 bg-emerald-400/10 text-emerald-100",
     };
   }
 
   if (ticket.status === "resolved") {
     return {
       label: "Решён",
-      className:
-        "border-cyan-400/20 bg-cyan-400/10 text-cyan-100",
+      className: "border-cyan-400/20 bg-cyan-400/10 text-cyan-100",
     };
   }
 
   if (ticket.status === "closed") {
     return {
       label: "Закрыт",
-      className:
-        "border-white/10 bg-white/[0.04] text-zinc-400",
+      className: "border-white/10 bg-white/[0.04] text-zinc-400",
     };
   }
 
@@ -76,13 +63,13 @@ export default function TicketList({
       {tickets.map((ticket) => {
         const isSelected = selectedTicketId === ticket.id;
         const unreadCount = ticket.unread_count || 0;
-
         const workflowHint = getWorkflowHint(ticket, variant);
 
         const needsAttention =
           unreadCount > 0 ||
-          ticket.status === "open" ||
-          ticket.status === "in_progress";
+          (variant === "admin" &&
+            (ticket.status === "open" || ticket.status === "in_progress")) ||
+          (variant === "user" && ticket.status === "waiting_user");
 
         return (
           <button
