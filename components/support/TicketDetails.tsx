@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase";
 import {
   SUPPORT_PRIORITIES,
@@ -34,15 +34,36 @@ export default function TicketDetails({
 }: Props) {
   const supabase = useMemo(() => createClient(), []);
 
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [sendError, setSendError] = useState("");
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
+  }, [messages]);
+
   if (!ticket) {
     return (
-      <div className="hidden min-h-[500px] items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] p-6 text-zinc-400 backdrop-blur-xl lg:flex">
-        Выберите тикет
+      <div className="flex min-h-[600px] items-center justify-center rounded-[28px] border border-white/10 bg-white/[0.03] p-8 backdrop-blur-2xl">
+        <div className="max-w-sm text-center">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] text-3xl">
+            💬
+          </div>
+
+          <h3 className="text-xl font-semibold text-white">
+            Выберите тикет
+          </h3>
+
+          <p className="mt-3 text-sm leading-7 text-zinc-400">
+            Откройте обращение слева, чтобы просмотреть переписку и ответить
+            пользователю.
+          </p>
+        </div>
       </div>
     );
   }
@@ -90,6 +111,7 @@ export default function TicketDetails({
       }
     } catch (error) {
       console.error("Send support message error:", error);
+
       setSendError(
         error instanceof Error
           ? error.message
@@ -139,131 +161,159 @@ export default function TicketDetails({
   }
 
   return (
-    <div className="flex min-h-[500px] flex-col rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl">
-      <div className="border-b border-white/10 p-5">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-white">{ticket.subject}</h2>
+    <div className="flex h-[calc(100vh-180px)] flex-col overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03] backdrop-blur-2xl">
+      <div className="sticky top-0 z-10 border-b border-white/10 bg-black/30 px-5 py-5 backdrop-blur-2xl">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
+                {SUPPORT_STATUS_LABELS[ticket.status]}
+              </span>
+
+              <span className="rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1 text-xs text-violet-200">
+                {SUPPORT_PRIORITY_LABELS[ticket.priority]}
+              </span>
+            </div>
+
+            <h2 className="mt-4 text-2xl font-bold text-white">
+              {ticket.subject}
+            </h2>
+
+            {ticket.customer_email && (
+              <p className="mt-2 text-sm text-zinc-500">
+                {ticket.customer_email}
+              </p>
+            )}
 
             {ticket.description && (
-              <p className="mt-1 text-sm text-zinc-400">
+              <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-400">
                 {ticket.description}
               </p>
             )}
-
-            {ticket.customer_email && (
-              <p className="mt-2 text-xs text-zinc-500">
-                Клиент: {ticket.customer_email}
-              </p>
-            )}
           </div>
 
-          <div className="flex shrink-0 flex-wrap gap-2">
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
-              {SUPPORT_STATUS_LABELS[ticket.status]}
-            </span>
+          {isAdmin && (
+            <div className="grid w-full gap-3 md:w-[320px]">
+              <label className="space-y-2">
+                <span className="text-xs text-zinc-500">Статус</span>
 
-            <span className="rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1 text-xs text-violet-200">
-              {SUPPORT_PRIORITY_LABELS[ticket.priority]}
-            </span>
-          </div>
+                <select
+                  value={ticket.status}
+                  disabled={isUpdating}
+                  onChange={(event) =>
+                    handleUpdateTicket({
+                      status: event.target.value as TicketStatus,
+                    })
+                  }
+                  className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none transition focus:border-violet-400/50"
+                >
+                  {SUPPORT_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {SUPPORT_STATUS_LABELS[status]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-xs text-zinc-500">Приоритет</span>
+
+                <select
+                  value={ticket.priority}
+                  disabled={isUpdating}
+                  onChange={(event) =>
+                    handleUpdateTicket({
+                      priority: event.target.value as TicketPriority,
+                    })
+                  }
+                  className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none transition focus:border-violet-400/50"
+                >
+                  {SUPPORT_PRIORITIES.map((priority) => (
+                    <option key={priority} value={priority}>
+                      {SUPPORT_PRIORITY_LABELS[priority]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
         </div>
+      </div>
 
-        {isAdmin && (
-          <div className="mt-5 grid gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 md:grid-cols-2">
-            <label className="space-y-2">
-              <span className="text-xs text-zinc-400">Статус</span>
+      <div className="flex-1 overflow-y-auto px-5 py-6">
+        {messages.length === 0 ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="max-w-sm text-center">
+              <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] text-2xl">
+                ✨
+              </div>
 
-              <select
-                value={ticket.status}
-                disabled={isUpdating}
-                onChange={(event) =>
-                  handleUpdateTicket({
-                    status: event.target.value as TicketStatus,
-                  })
-                }
-                className="w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white outline-none"
-              >
-                {SUPPORT_STATUSES.map((status) => (
-                  <option key={status} value={status}>
-                    {SUPPORT_STATUS_LABELS[status]}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <h3 className="text-lg font-semibold text-white">
+                Пока нет сообщений
+              </h3>
 
-            <label className="space-y-2">
-              <span className="text-xs text-zinc-400">Приоритет</span>
+              <p className="mt-2 text-sm leading-7 text-zinc-400">
+                Начните переписку, отправив первое сообщение.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {messages.map((item) => {
+              const isMine = item.sender_id === currentUserId;
 
-              <select
-                value={ticket.priority}
-                disabled={isUpdating}
-                onChange={(event) =>
-                  handleUpdateTicket({
-                    priority: event.target.value as TicketPriority,
-                  })
-                }
-                className="w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white outline-none"
-              >
-                {SUPPORT_PRIORITIES.map((priority) => (
-                  <option key={priority} value={priority}>
-                    {SUPPORT_PRIORITY_LABELS[priority]}
-                  </option>
-                ))}
-              </select>
-            </label>
+              return (
+                <div
+                  key={item.id}
+                  className={`flex ${
+                    isMine ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  <div
+                    className={`max-w-[90%] rounded-[24px] px-5 py-4 shadow-lg transition-all md:max-w-[75%] ${
+                      isMine
+                        ? "bg-violet-500 text-white shadow-violet-500/10"
+                        : "border border-white/10 bg-white/[0.04] text-zinc-100"
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap break-words text-sm leading-7">
+                      {item.message}
+                    </p>
+
+                    <div
+                      className={`mt-3 text-[11px] ${
+                        isMine ? "text-violet-100" : "text-zinc-500"
+                      }`}
+                    >
+                      {new Date(item.created_at).toLocaleString("ru-RU")}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            <div ref={messagesEndRef} />
           </div>
         )}
       </div>
 
-      <div className="flex-1 space-y-4 p-5">
-        {messages.map((item) => {
-          const isMine = item.sender_id === currentUserId;
-
-          return (
-            <div
-              key={item.id}
-              className={`flex ${isMine ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
-                  isMine
-                    ? "bg-violet-500 text-white"
-                    : "border border-white/10 bg-white/5 text-zinc-100"
-                }`}
-              >
-                <p className="whitespace-pre-wrap">{item.message}</p>
-
-                <div
-                  className={`mt-2 text-[11px] ${
-                    isMine ? "text-violet-100" : "text-zinc-500"
-                  }`}
-                >
-                  {new Date(item.created_at).toLocaleString("ru-RU")}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="border-t border-white/10 p-4">
+      <div className="sticky bottom-0 border-t border-white/10 bg-black/40 p-4 backdrop-blur-2xl">
         {isClosedForUser ? (
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-zinc-400">
-            Этот тикет закрыт. Если вопрос ещё актуален, создайте новое
+          <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm leading-7 text-zinc-400">
+            Этот тикет закрыт. Если вопрос всё ещё актуален — создайте новое
             обращение.
           </div>
         ) : (
           <>
             {isResolvedForUser && (
-              <div className="mb-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-100">
-                Тикет отмечен как решённый. Если вы отправите новое сообщение,
-                он снова станет открытым.
+              <div className="mb-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-100">
+                Тикет отмечен как решённый. Новое сообщение автоматически
+                переоткроет обращение.
               </div>
             )}
 
             {sendError && (
-              <div className="mb-3 rounded-2xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-100">
+              <div className="mb-3 rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-100">
                 {sendError}
               </div>
             )}
@@ -274,13 +324,13 @@ export default function TicketDetails({
                 onChange={(event) => setMessage(event.target.value)}
                 placeholder="Напишите сообщение..."
                 rows={2}
-                className="min-h-[52px] flex-1 resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-400/50"
+                className="min-h-[60px] flex-1 resize-none rounded-[22px] border border-white/10 bg-white/[0.04] px-5 py-4 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-violet-400/50"
               />
 
               <button
                 onClick={handleSendMessage}
                 disabled={isSending || !message.trim()}
-                className="rounded-2xl bg-violet-500 px-5 py-3 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-[22px] bg-violet-500 px-6 py-4 text-sm font-semibold text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSending ? "Отправка..." : "Отправить"}
               </button>
