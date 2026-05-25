@@ -93,7 +93,21 @@ export default function UserSupportView() {
         throw new Error(data.error || "Не удалось загрузить тикеты");
       }
 
-      setTickets(data.tickets || []);
+      const nextTickets = data.tickets || [];
+
+      setTickets(nextTickets);
+
+      setSelectedTicket((prev) => {
+        if (!prev) return prev;
+
+        const updatedSelectedTicket = nextTickets.find(
+          (ticket: SupportTicket) => ticket.id === prev.id
+        );
+
+        return updatedSelectedTicket
+          ? { ...prev, ...updatedSelectedTicket }
+          : prev;
+      });
     } catch (error) {
       console.error("Load support tickets error:", error);
     } finally {
