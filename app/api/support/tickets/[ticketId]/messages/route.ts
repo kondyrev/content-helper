@@ -7,11 +7,20 @@ interface Params {
   }>;
 }
 
-function sanitizeFileName(fileName: string) {
-  return fileName
-    .replace(/[^\w.\-а-яА-ЯёЁ]/g, "_")
-    .replace(/_+/g, "_")
-    .slice(0, 120);
+function getFileExtension(fileName: string) {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+
+  if (!extension || extension === fileName.toLowerCase()) {
+    return "jpg";
+  }
+
+  return extension.replace(/[^a-z0-9]/g, "") || "jpg";
+}
+
+function createStorageFileName(fileName: string) {
+  const extension = getFileExtension(fileName);
+
+  return `${crypto.randomUUID()}.${extension}`;
 }
 
 async function createSignedAttachment(
@@ -154,8 +163,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     const uploadedAttachments = [];
 
     for (const file of imageFiles) {
-      const safeName = sanitizeFileName(file.name);
-      const filePath = `${ticketId}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+      const storageFileName = createStorageFileName(file.name);
+
+      const filePath = `${ticketId}/${Date.now()}-${storageFileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("support-attachments")
@@ -196,7 +206,9 @@ export async function POST(request: NextRequest, { params }: Params) {
         );
       }
 
-      uploadedAttachments.push(await createSignedAttachment(supabase, attachment));
+      uploadedAttachments.push(
+        await createSignedAttachment(supabase, attachment)
+      );
     }
 
     const nextStatus = isAdmin ? "waiting_user" : "in_progress";
