@@ -25,6 +25,7 @@ interface Props {
   onBack?: () => void;
   onMessageCreated?: (message: SupportMessage) => void;
   onTicketUpdated?: (ticket: SupportTicket) => void;
+  onRefresh?: () => void;
 }
 
 export default function TicketDetails({
@@ -35,6 +36,7 @@ export default function TicketDetails({
   onBack,
   onMessageCreated,
   onTicketUpdated,
+  onRefresh,
 }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -75,7 +77,16 @@ export default function TicketDetails({
 
   function handleFilesChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files || []);
-    setSelectedFiles(files);
+
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+
+    if (imageFiles.length !== files.length) {
+      setSendError("Можно прикреплять только изображения.");
+    } else {
+      setSendError("");
+    }
+
+    setSelectedFiles(imageFiles);
   }
 
   function clearFiles() {
@@ -117,7 +128,7 @@ export default function TicketDetails({
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || "Не удалось загрузить файлы");
+      throw new Error(data.error || "Не удалось загрузить изображения");
     }
 
     return (data.attachments || []) as SupportAttachment[];
@@ -171,6 +182,8 @@ export default function TicketDetails({
       if (data.ticket) {
         onTicketUpdated?.(data.ticket);
       }
+
+      onRefresh?.();
     } catch (error) {
       console.error("Send support message error:", error);
 
@@ -429,7 +442,7 @@ export default function TicketDetails({
               <div className="mb-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <p className="text-xs text-zinc-400">
-                    Файлы: {selectedFiles.length}
+                    Скриншоты: {selectedFiles.length}
                   </p>
 
                   <button
@@ -447,7 +460,7 @@ export default function TicketDetails({
                       key={`${file.name}-${file.size}`}
                       className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-zinc-300"
                     >
-                      📎 {file.name}
+                      🖼️ {file.name}
                     </span>
                   ))}
                 </div>
@@ -479,7 +492,7 @@ export default function TicketDetails({
                   disabled={isSending}
                   className="rounded-[22px] border border-white/10 bg-white/[0.04] px-5 py-4 text-sm font-semibold text-zinc-300 transition hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  📎
+                  🖼️
                 </button>
 
                 <button

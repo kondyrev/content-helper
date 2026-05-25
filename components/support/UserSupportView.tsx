@@ -283,6 +283,11 @@ export default function UserSupportView() {
                         )
                       );
                     }}
+                    onRefresh={() => {
+                      if (selectedTicketId) {
+                        void loadTicketDetails(selectedTicketId);
+                      }
+                    }}
                   />
                 )}
               </div>

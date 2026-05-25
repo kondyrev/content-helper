@@ -319,6 +319,11 @@ export default function AdminSupportView() {
                     )
                   );
                 }}
+                onRefresh={() => {
+                  if (selectedTicketId) {
+                    void loadTicketDetails(selectedTicketId);
+                  }
+                }}
               />
             )}
           </div>
