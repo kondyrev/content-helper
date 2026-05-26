@@ -27,6 +27,7 @@ export default function AdminPaymentsPage() {
   const router = useRouter();
 
   const [isLoading, setIsLoading] = useState(true);
+  const [pageError, setPageError] = useState<string | null>(null);
   const [adminProfile, setAdminProfile] = useState<Profile | null>(null);
   const [payments, setPayments] = useState<AdminPayment[]>([]);
 
@@ -36,6 +37,8 @@ export default function AdminPaymentsPage() {
   useEffect(() => {
     async function loadPayments() {
       try {
+        setPageError(null);
+
         const accountData = (await getAdminOverview()) as AccountResponse;
 
         if (accountData.profile.role !== "admin") {
@@ -49,7 +52,12 @@ export default function AdminPaymentsPage() {
         setPayments(paymentsData);
       } catch (error) {
         console.error("Admin payments load error:", error);
-        //router.replace("/");
+
+        setPageError(
+          error instanceof Error
+            ? error.message
+            : "Не удалось загрузить платежи.",
+        );
       } finally {
         setIsLoading(false);
       }
@@ -86,6 +94,17 @@ export default function AdminPaymentsPage() {
       <main className="min-h-screen bg-[#070812] px-6 py-6 text-white">
         <div className="h-12 w-64 animate-pulse rounded-2xl bg-white/10" />
         <div className="mt-8 h-[520px] animate-pulse rounded-[28px] bg-white/10" />
+      </main>
+    );
+  }
+
+  if (pageError) {
+    return (
+      <main className="min-h-screen bg-[#070812] px-6 py-6 text-white">
+        <div className="rounded-[28px] border border-rose-400/20 bg-rose-400/10 p-6 text-rose-100">
+          <div className="text-xl font-black">Ошибка загрузки платежей</div>
+          <pre className="mt-4 whitespace-pre-wrap text-sm">{pageError}</pre>
+        </div>
       </main>
     );
   }
@@ -168,6 +187,7 @@ export default function AdminPaymentsPage() {
             >
               <option value="all">Все статусы</option>
               <option value="pending">pending</option>
+              <option value="paid">paid</option>
               <option value="succeeded">succeeded</option>
               <option value="success">success</option>
               <option value="failed">failed</option>
@@ -268,7 +288,6 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/[0.07] bg-white/[0.045] px-4 py-3">
       <div className="text-xs font-semibold text-slate-500">{label}</div>
-
       <div className="mt-1 text-2xl font-black tracking-tight">{value}</div>
     </div>
   );
@@ -288,15 +307,13 @@ function RevenueChart({
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-sm font-bold">Revenue Flow</div>
-
           <div className="mt-1 text-xs text-slate-500">
-            Выручка по реальным successful payments
+            Выручка по реальным paid payments
           </div>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-right">
           <div className="text-xs text-slate-500">Revenue</div>
-
           <div className="mt-1 text-lg font-black tracking-tight">
             {revenue.toLocaleString("ru-RU")} ₽
           </div>
@@ -353,7 +370,6 @@ function WebhookPanel({
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-sm font-bold">Webhook Monitor</div>
-
           <div className="mt-1 text-xs text-slate-500">
             Foundation для Robokassa events
           </div>
@@ -374,7 +390,6 @@ function WebhookPanel({
               <div className="text-sm font-bold text-slate-200">
                 {event.title}
               </div>
-
               <div className="mt-1 text-xs text-slate-500">{event.meta}</div>
             </div>
 
@@ -390,7 +405,7 @@ function PaymentStatus({ status }: { status: string }) {
   const normalized = status.toLowerCase();
 
   const className =
-    normalized === "succeeded" || normalized === "success"
+    ["paid", "succeeded", "success"].includes(normalized)
       ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
       : ["failed", "error", "canceled"].includes(normalized)
         ? "border-rose-400/20 bg-rose-400/10 text-rose-200"
@@ -451,7 +466,7 @@ function TableHead({ children }: { children: React.ReactNode }) {
 
 function getChartValues(payments: AdminPayment[]) {
   const successful = payments.filter((payment) =>
-    ["succeeded", "success"].includes(payment.status.toLowerCase()),
+    ["paid", "succeeded", "success"].includes(payment.status.toLowerCase()),
   );
 
   if (successful.length === 0) {
