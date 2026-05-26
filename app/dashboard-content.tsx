@@ -320,6 +320,10 @@ export default function Home() {
       }
 
       setResult(data.result);
+      
+      if (typeof window !== "undefined") {
+        window.ym?.(109420399, "reachGoal", "generation");
+      }
 
       if (typeof data.usedToday === "number") {
         setTodayCount(data.usedToday);
