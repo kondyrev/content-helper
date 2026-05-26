@@ -4,8 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase";
 import { getAdminOverview } from "@/lib/admin/queries";
+import {
+  AdminPayment,
+  getAdminPayments,
+} from "@/lib/admin/payments";
 import { AdminShell } from "@/components/admin/AdminShell";
-import { PlanPill, RolePill, StatusPill } from "./UserPills";
+import { UserPaymentsPanel } from "./UserPaymentsPanel";
+import {
+  PlanPill,
+  RolePill,
+  StatusPill,
+} from "./UserPills";
 
 type Profile = {
   id: string;
@@ -57,20 +66,32 @@ export default function AdminUserDetailsPage() {
   const [planError, setPlanError] = useState<string | null>(null);
   const [planSuccess, setPlanSuccess] = useState<string | null>(null);
 
-  const [adminProfile, setAdminProfile] = useState<Profile | null>(null);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [adminProfile, setAdminProfile] =
+    useState<Profile | null>(null);
 
-  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<PlanId>("creator");
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [subscriptions, setSubscriptions] = useState<
+    Subscription[]
+  >([]);
+
+  const [payments, setPayments] = useState<AdminPayment[]>([]);
+
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] =
+    useState(false);
+
+  const [selectedPlan, setSelectedPlan] =
+    useState<PlanId>("creator");
+
   const [selectedMode, setSelectedMode] =
     useState<SubscriptionActionMode>("change_only");
+
   const [customDateTime, setCustomDateTime] = useState("");
 
   useEffect(() => {
     async function loadUserDetails() {
       try {
-        const accountData = (await getAdminOverview()) as AccountResponse;
+        const accountData =
+          (await getAdminOverview()) as AccountResponse;
 
         if (accountData.profile.role !== "admin") {
           router.replace("/dashboard");
@@ -80,8 +101,20 @@ export default function AdminUserDetailsPage() {
         setAdminProfile(accountData.profile);
         setProfiles(accountData.profiles || []);
         setSubscriptions(accountData.subscriptions || []);
+
+        const paymentsData = await getAdminPayments();
+
+        setPayments(
+          paymentsData.filter(
+            (payment) => payment.user_id === params.userId,
+          ),
+        );
       } catch (error) {
-        console.error("Admin user details load error:", error);
+        console.error(
+          "Admin user details load error:",
+          error,
+        );
+
         router.replace("/");
       } finally {
         setIsLoading(false);
@@ -89,29 +122,43 @@ export default function AdminUserDetailsPage() {
     }
 
     loadUserDetails();
-  }, [router]);
+  }, [params.userId, router]);
 
   const user = useMemo(() => {
-    return profiles.find((item) => item.id === params.userId) || null;
+    return (
+      profiles.find(
+        (item) => item.id === params.userId,
+      ) || null
+    );
   }, [profiles, params.userId]);
 
   const subscription = useMemo(() => {
-    return subscriptions.find((item) => item.user_id === params.userId) || null;
+    return (
+      subscriptions.find(
+        (item) => item.user_id === params.userId,
+      ) || null
+    );
   }, [subscriptions, params.userId]);
 
-  async function handleUpdateRole(newRole: "user" | "admin") {
+  async function handleUpdateRole(
+    newRole: "user" | "admin",
+  ) {
     if (!user) return;
 
     setRoleError(null);
     setRoleSuccess(null);
 
     if (user.role === newRole) {
-      setRoleError(`У пользователя уже роль ${newRole}.`);
+      setRoleError(
+        `У пользователя уже роль ${newRole}.`,
+      );
       return;
     }
 
     const confirmed = window.confirm(
-      `Точно изменить роль пользователя ${user.email || user.id} на "${newRole}"?`,
+      `Точно изменить роль пользователя ${
+        user.email || user.id
+      } на "${newRole}"?`,
     );
 
     if (!confirmed) return;
@@ -128,33 +175,46 @@ export default function AdminUserDetailsPage() {
         return;
       }
 
-      const response = await fetch("/api/admin/users/update-role", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
+      const response = await fetch(
+        "/api/admin/users/update-role",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            targetUserId: user.id,
+            newRole,
+          }),
         },
-        body: JSON.stringify({
-          targetUserId: user.id,
-          newRole,
-        }),
-      });
+      );
 
       const data = await response.json();
 
       if (!response.ok || data?.error) {
-        throw new Error(data?.error || "Не удалось изменить роль.");
+        throw new Error(
+          data?.error ||
+            "Не удалось изменить роль.",
+        );
       }
 
       setProfiles((currentProfiles) =>
         currentProfiles.map((profile) =>
-          profile.id === user.id ? { ...profile, role: newRole } : profile,
+          profile.id === user.id
+            ? { ...profile, role: newRole }
+            : profile,
         ),
       );
 
-      setRoleSuccess(`Роль успешно изменена на ${newRole}.`);
+      setRoleSuccess(
+        `Роль успешно изменена на ${newRole}.`,
+      );
     } catch (error) {
-      console.error("Update role client error:", error);
+      console.error(
+        "Update role client error:",
+        error,
+      );
 
       setRoleError(
         error instanceof Error
@@ -188,39 +248,50 @@ export default function AdminUserDetailsPage() {
 
       if (selectedMode === "set_custom_date") {
         if (!customDateTime) {
-          throw new Error("Выбери дату и время окончания подписки.");
+          throw new Error(
+            "Выбери дату и время окончания подписки.",
+          );
         }
 
         const parsedDate = new Date(customDateTime);
 
         if (Number.isNaN(parsedDate.getTime())) {
-          throw new Error("Некорректная дата окончания подписки.");
+          throw new Error(
+            "Некорректная дата окончания подписки.",
+          );
         }
 
         customPeriodEnd = parsedDate.toISOString();
       }
 
-      const response = await fetch("/api/admin/subscriptions/change-plan", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
+      const response = await fetch(
+        "/api/admin/subscriptions/change-plan",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            targetUserId: user.id,
+            newPlanId: selectedPlan,
+            mode: selectedMode,
+            customPeriodEnd,
+          }),
         },
-        body: JSON.stringify({
-          targetUserId: user.id,
-          newPlanId: selectedPlan,
-          mode: selectedMode,
-          customPeriodEnd,
-        }),
-      });
+      );
 
       const data = await response.json();
 
       if (!response.ok || data?.error) {
-        throw new Error(data?.error || "Не удалось обновить подписку.");
+        throw new Error(
+          data?.error ||
+            "Не удалось обновить подписку.",
+        );
       }
 
-      const nextSubscription = data.subscription as Subscription;
+      const nextSubscription =
+        data.subscription as Subscription;
 
       setSubscriptions((currentSubscriptions) => {
         const exists = currentSubscriptions.some(
@@ -228,7 +299,10 @@ export default function AdminUserDetailsPage() {
         );
 
         if (!exists) {
-          return [...currentSubscriptions, nextSubscription];
+          return [
+            ...currentSubscriptions,
+            nextSubscription,
+          ];
         }
 
         return currentSubscriptions.map((item) =>
@@ -237,16 +311,23 @@ export default function AdminUserDetailsPage() {
                 ...item,
                 plan_id: nextSubscription.plan_id,
                 status: nextSubscription.status,
-                current_period_end: nextSubscription.current_period_end,
+                current_period_end:
+                  nextSubscription.current_period_end,
               }
             : item,
         );
       });
 
-      setPlanSuccess("Подписка успешно обновлена.");
+      setPlanSuccess(
+        "Подписка успешно обновлена.",
+      );
+
       setIsSubscriptionModalOpen(false);
     } catch (error) {
-      console.error("Manage subscription client error:", error);
+      console.error(
+        "Manage subscription client error:",
+        error,
+      );
 
       setPlanError(
         error instanceof Error
@@ -278,17 +359,6 @@ export default function AdminUserDetailsPage() {
           <div className="text-2xl font-black tracking-tight">
             Пользователь не найден
           </div>
-
-          <p className="mt-3 text-sm text-slate-500">
-            Возможно, пользователь был удалён или указан неверный user id.
-          </p>
-
-          <button
-            onClick={() => router.push("/admin/users")}
-            className="mt-6 rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm font-bold text-slate-200 transition hover:bg-white/[0.08]"
-          >
-            Вернуться к пользователям
-          </button>
         </div>
       </AdminShell>
     );
@@ -296,16 +366,15 @@ export default function AdminUserDetailsPage() {
 
   const planId = subscription?.plan_id || "free";
   const status = subscription?.status || "active";
-  const planName = subscription?.plans?.name || planId;
-  const dailyLimit = subscription?.plans?.daily_limit ?? 0;
-  const priceMonth = subscription?.plans?.price_month ?? 0;
 
   return (
     <AdminShell adminEmail={adminProfile.email}>
       <div className="space-y-5">
         <section className="rounded-[28px] border border-white/10 bg-white/[0.055] p-6 shadow-2xl backdrop-blur-2xl sm:p-8">
           <button
-            onClick={() => router.push("/admin/users")}
+            onClick={() =>
+              router.push("/admin/users")
+            }
             className="mb-6 rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-2 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08]"
           >
             ← Назад к пользователям
@@ -318,7 +387,8 @@ export default function AdminUserDetailsPage() {
               </div>
 
               <h1 className="mt-5 max-w-4xl text-3xl font-black leading-none tracking-[-0.06em] sm:text-5xl">
-                {user.email || "Пользователь без email"}
+                {user.email ||
+                  "Пользователь без email"}
               </h1>
 
               <p className="mt-4 max-w-3xl break-all text-sm leading-7 text-slate-400">
@@ -341,7 +411,12 @@ export default function AdminUserDetailsPage() {
               items={[
                 ["Email", user.email || "—"],
                 ["Role", user.role],
-                ["Created", new Date(user.created_at).toLocaleString("ru-RU")],
+                [
+                  "Created",
+                  new Date(
+                    user.created_at,
+                  ).toLocaleString("ru-RU"),
+                ],
                 ["User ID", user.id],
               ]}
             />
@@ -349,127 +424,72 @@ export default function AdminUserDetailsPage() {
             <InfoCard
               title="Подписка"
               items={[
-                ["Plan", planName],
-                ["Plan ID", planId],
+                ["Plan", planId],
                 ["Status", status],
-                ["Daily limit", dailyLimit.toString()],
-                ["Price / month", `${priceMonth.toLocaleString("ru-RU")} ₽`],
                 [
                   "Period end",
                   subscription?.current_period_end
-                    ? new Date(subscription.current_period_end).toLocaleString(
-                        "ru-RU",
-                      )
+                    ? new Date(
+                        subscription.current_period_end,
+                      ).toLocaleString("ru-RU")
                     : "—",
                 ],
               ]}
             />
-
-            <MetricBox
-              label="Генерации"
-              value="—"
-              description="Подключим generation history"
-            />
-
-            <MetricBox
-              label="Платежи"
-              value="—"
-              description="Подключим payments table"
-            />
           </div>
 
           <aside className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
-            <div className="text-sm font-bold">Admin Actions</div>
-
-            <div className="mt-1 text-xs text-slate-500">
-              Действия идут через server API routes и пишутся в audit logs.
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.045] p-4">
-              <div className="text-xs font-semibold text-slate-500">
-                Управление ролью
-              </div>
-
-              <div className="mt-2">
-                <RolePill role={user.role} />
-              </div>
-
-              <div className="mt-4 grid gap-2">
-                <ActionButton
-                  disabled={isRoleUpdating || user.role === "user"}
-                  onClick={() => handleUpdateRole("user")}
-                >
-                  Сделать user
-                </ActionButton>
-
-                <ActionButton
-                  disabled={isRoleUpdating || user.role === "admin"}
-                  onClick={() => handleUpdateRole("admin")}
-                >
-                  Сделать admin
-                </ActionButton>
-              </div>
-
-              {roleError ? (
-                <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 p-3 text-xs leading-5 text-rose-200">
-                  {roleError}
-                </div>
-              ) : null}
-
-              {roleSuccess ? (
-                <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-xs leading-5 text-emerald-200">
-                  {roleSuccess}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.045] p-4">
-              <div className="text-xs font-semibold text-slate-500">
-                Управление тарифом
-              </div>
-
-              <div className="mt-2 flex flex-wrap gap-2">
-                <PlanPill plan={planId} />
-                <StatusPill status={status} />
-              </div>
-
-              <ActionButton
-                onClick={() => {
-                  setSelectedPlan(planId as PlanId);
-                  setSelectedMode("change_only");
-                  setCustomDateTime("");
-                  setPlanError(null);
-                  setPlanSuccess(null);
-                  setIsSubscriptionModalOpen(true);
-                }}
-                className="mt-4"
-              >
-                Управлять тарифом
-              </ActionButton>
-
-              {planError ? (
-                <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 p-3 text-xs leading-5 text-rose-200">
-                  {planError}
-                </div>
-              ) : null}
-
-              {planSuccess ? (
-                <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-xs leading-5 text-emerald-200">
-                  {planSuccess}
-                </div>
-              ) : null}
+            <div className="text-sm font-bold">
+              Admin Actions
             </div>
 
             <div className="mt-5 space-y-3">
-              <ActionButton disabled>Управлять лимитами</ActionButton>
-              <ActionButton disabled danger>
-                Заблокировать пользователя
+              <ActionButton
+                disabled={
+                  isRoleUpdating ||
+                  user.role === "user"
+                }
+                onClick={() =>
+                  handleUpdateRole("user")
+                }
+              >
+                Сделать user
               </ActionButton>
-            </div>
 
-            <div className="mt-5 rounded-2xl border border-amber-300/20 bg-amber-300/10 p-4 text-xs leading-5 text-amber-100">
-              Следующие actions: reset limits, block user, impersonation,
-              payment details.
+              <ActionButton
+                disabled={
+                  isRoleUpdating ||
+                  user.role === "admin"
+                }
+                onClick={() =>
+                  handleUpdateRole("admin")
+                }
+              >
+                Сделать admin
+              </ActionButton>
+
+              <ActionButton
+                onClick={() => {
+                  setSelectedPlan(
+                    planId as PlanId,
+                  );
+
+                  setSelectedMode(
+                    "change_only",
+                  );
+
+                  setCustomDateTime("");
+
+                  setPlanError(null);
+                  setPlanSuccess(null);
+
+                  setIsSubscriptionModalOpen(
+                    true,
+                  );
+                }}
+              >
+                Управлять тарифом
+              </ActionButton>
             </div>
           </aside>
         </section>
@@ -486,15 +506,8 @@ export default function AdminUserDetailsPage() {
             ]}
           />
 
-          <PlaceholderPanel
-            title="Payments"
-            subtitle="История оплат и Robokassa events"
-            items={[
-              "успешные платежи",
-              "ошибки оплат",
-              "invoice id",
-              "refund/manual activation",
-            ]}
+          <UserPaymentsPanel
+            payments={payments}
           />
 
           <PlaceholderPanel
@@ -508,6 +521,34 @@ export default function AdminUserDetailsPage() {
             ]}
           />
         </section>
+
+        {roleError ? (
+          <MessageBox
+            type="error"
+            message={roleError}
+          />
+        ) : null}
+
+        {roleSuccess ? (
+          <MessageBox
+            type="success"
+            message={roleSuccess}
+          />
+        ) : null}
+
+        {planError ? (
+          <MessageBox
+            type="error"
+            message={planError}
+          />
+        ) : null}
+
+        {planSuccess ? (
+          <MessageBox
+            type="success"
+            message={planSuccess}
+          />
+        ) : null}
       </div>
 
       {isSubscriptionModalOpen ? (
@@ -518,12 +559,125 @@ export default function AdminUserDetailsPage() {
           isUpdating={isPlanUpdating}
           onPlanChange={setSelectedPlan}
           onModeChange={setSelectedMode}
-          onCustomDateTimeChange={setCustomDateTime}
-          onClose={() => setIsSubscriptionModalOpen(false)}
-          onSubmit={handleManageSubscription}
+          onCustomDateTimeChange={
+            setCustomDateTime
+          }
+          onClose={() =>
+            setIsSubscriptionModalOpen(false)
+          }
+          onSubmit={
+            handleManageSubscription
+          }
         />
       ) : null}
     </AdminShell>
+  );
+}
+
+function InfoCard({
+  title,
+  items,
+}: {
+  title: string;
+  items: [string, string][];
+}) {
+  return (
+    <div className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
+      <div className="mb-4 text-sm font-bold">
+        {title}
+      </div>
+
+      <div className="space-y-3">
+        {items.map(([label, value]) => (
+          <div
+            key={label}
+            className="rounded-2xl border border-white/[0.07] bg-white/[0.045] px-4 py-3"
+          >
+            <div className="text-xs font-semibold text-slate-500">
+              {label}
+            </div>
+
+            <div className="mt-1 break-all text-sm font-bold text-slate-200">
+              {value}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PlaceholderPanel({
+  title,
+  subtitle,
+  items,
+}: {
+  title: string;
+  subtitle: string;
+  items: string[];
+}) {
+  return (
+    <div className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
+      <div className="text-sm font-bold">
+        {title}
+      </div>
+
+      <div className="mt-1 text-xs text-slate-500">
+        {subtitle}
+      </div>
+
+      <div className="mt-5 space-y-2">
+        {items.map((item) => (
+          <div
+            key={item}
+            className="rounded-2xl border border-white/[0.07] bg-white/[0.045] px-4 py-3 text-sm font-semibold text-slate-300"
+          >
+            {item}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ActionButton({
+  children,
+  disabled,
+  onClick,
+}: {
+  children: React.ReactNode;
+  disabled?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      disabled={disabled}
+      onClick={onClick}
+      className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-left text-sm font-bold text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {children}
+    </button>
+  );
+}
+
+function MessageBox({
+  type,
+  message,
+}: {
+  type: "error" | "success";
+  message: string;
+}) {
+  const className =
+    type === "error"
+      ? "border-rose-400/20 bg-rose-400/10 text-rose-200"
+      : "border-emerald-400/20 bg-emerald-400/10 text-emerald-200";
+
+  return (
+    <div
+      className={`rounded-2xl border p-4 text-sm ${className}`}
+    >
+      {message}
+    </div>
   );
 }
 
@@ -709,115 +863,6 @@ function ModeOption({
     >
       <div className="text-sm font-bold text-slate-100">{title}</div>
       <div className="mt-1 text-xs leading-5 text-slate-500">{description}</div>
-    </button>
-  );
-}
-
-function InfoCard({
-  title,
-  items,
-}: {
-  title: string;
-  items: [string, string][];
-}) {
-  return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
-      <div className="mb-4 text-sm font-bold">{title}</div>
-
-      <div className="space-y-3">
-        {items.map(([label, value]) => (
-          <div
-            key={label}
-            className="rounded-2xl border border-white/[0.07] bg-white/[0.045] px-4 py-3"
-          >
-            <div className="text-xs font-semibold text-slate-500">{label}</div>
-
-            <div className="mt-1 break-all text-sm font-bold text-slate-200">
-              {value}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function MetricBox({
-  label,
-  value,
-  description,
-}: {
-  label: string;
-  value: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
-      <div className="text-sm font-semibold text-slate-400">{label}</div>
-
-      <div className="mt-3 text-4xl font-black tracking-[-0.06em]">
-        {value}
-      </div>
-
-      <div className="mt-4 text-xs text-slate-500">{description}</div>
-    </div>
-  );
-}
-
-function PlaceholderPanel({
-  title,
-  subtitle,
-  items,
-}: {
-  title: string;
-  subtitle: string;
-  items: string[];
-}) {
-  return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
-      <div className="text-sm font-bold">{title}</div>
-      <div className="mt-1 text-xs text-slate-500">{subtitle}</div>
-
-      <div className="mt-5 space-y-2">
-        {items.map((item) => (
-          <div
-            key={item}
-            className="rounded-2xl border border-white/[0.07] bg-white/[0.045] px-4 py-3 text-sm font-semibold text-slate-300"
-          >
-            {item}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ActionButton({
-  children,
-  disabled,
-  danger,
-  onClick,
-  className = "",
-}: {
-  children: React.ReactNode;
-  disabled?: boolean;
-  danger?: boolean;
-  onClick?: () => void;
-  className?: string;
-}) {
-  return (
-    <button
-      disabled={disabled}
-      onClick={onClick}
-      className={`w-full rounded-2xl border px-4 py-3 text-left text-sm font-bold transition ${
-        danger
-          ? "border-rose-400/20 bg-rose-400/10 text-rose-200"
-          : "border-white/10 bg-white/[0.055] text-slate-200"
-      } ${
-        disabled ? "cursor-not-allowed opacity-50" : "hover:bg-white/[0.08]"
-      } ${className}`}
-    >
-      {children}
     </button>
   );
 }
