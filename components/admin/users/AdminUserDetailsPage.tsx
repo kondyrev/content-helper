@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase";
 import { getAdminOverview } from "@/lib/admin/queries";
 import { AdminShell } from "@/components/admin/AdminShell";
 
@@ -34,8 +35,13 @@ type AccountResponse = {
 export default function AdminUserDetailsPage() {
   const router = useRouter();
   const params = useParams<{ userId: string }>();
+  const supabase = useMemo(() => createClient(), []);
 
   const [isLoading, setIsLoading] = useState(true);
+  const [isRoleUpdating, setIsRoleUpdating] = useState(false);
+  const [roleError, setRoleError] = useState<string | null>(null);
+  const [roleSuccess, setRoleSuccess] = useState<string | null>(null);
+
   const [adminProfile, setAdminProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -72,6 +78,78 @@ export default function AdminUserDetailsPage() {
     return subscriptions.find((item) => item.user_id === params.userId) || null;
   }, [subscriptions, params.userId]);
 
+  async function handleUpdateRole(newRole: "user" | "admin") {
+    if (!user) return;
+
+    setRoleError(null);
+    setRoleSuccess(null);
+
+    if (user.role === newRole) {
+      setRoleError(`У пользователя уже роль ${newRole}.`);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Точно изменить роль пользователя ${user.email || user.id} на "${newRole}"?`,
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setIsRoleUpdating(true);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        router.replace("/");
+        return;
+      }
+
+      const response = await fetch("/api/admin/users/update-role", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          targetUserId: user.id,
+          newRole,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data?.error) {
+        throw new Error(data?.error || "Не удалось изменить роль.");
+      }
+
+      setProfiles((currentProfiles) =>
+        currentProfiles.map((profile) =>
+          profile.id === user.id
+            ? {
+                ...profile,
+                role: newRole,
+              }
+            : profile,
+        ),
+      );
+
+      setRoleSuccess(`Роль успешно изменена на ${newRole}.`);
+    } catch (error) {
+      console.error("Update role client error:", error);
+
+      setRoleError(
+        error instanceof Error
+          ? error.message
+          : "Не удалось изменить роль пользователя.",
+      );
+    } finally {
+      setIsRoleUpdating(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <main className="min-h-screen bg-[#070812] px-6 py-6 text-white">
@@ -92,9 +170,11 @@ export default function AdminUserDetailsPage() {
           <div className="text-2xl font-black tracking-tight">
             Пользователь не найден
           </div>
+
           <p className="mt-3 text-sm text-slate-500">
             Возможно, пользователь был удалён или указан неверный user id.
           </p>
+
           <button
             onClick={() => router.push("/admin/users")}
             className="mt-6 rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm font-bold text-slate-200 transition hover:bg-white/[0.08]"
@@ -153,10 +233,7 @@ export default function AdminUserDetailsPage() {
               items={[
                 ["Email", user.email || "—"],
                 ["Role", user.role],
-                [
-                  "Created",
-                  new Date(user.created_at).toLocaleString("ru-RU"),
-                ],
+                ["Created", new Date(user.created_at).toLocaleString("ru-RU")],
                 ["User ID", user.id],
               ]}
             />
@@ -195,14 +272,52 @@ export default function AdminUserDetailsPage() {
 
           <aside className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
             <div className="text-sm font-bold">Admin Actions</div>
+
             <div className="mt-1 text-xs text-slate-500">
-              Пока read-only. Actions подключим безопасно через audit logs.
+              Первое безопасное действие: смена роли через API + audit logs.
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.045] p-4">
+              <div className="text-xs font-semibold text-slate-500">
+                Текущая роль
+              </div>
+
+              <div className="mt-2">
+                <RolePill role={user.role} />
+              </div>
+
+              <div className="mt-4 grid gap-2">
+                <ActionButton
+                  disabled={isRoleUpdating || user.role === "user"}
+                  onClick={() => handleUpdateRole("user")}
+                >
+                  Сделать user
+                </ActionButton>
+
+                <ActionButton
+                  disabled={isRoleUpdating || user.role === "admin"}
+                  onClick={() => handleUpdateRole("admin")}
+                >
+                  Сделать admin
+                </ActionButton>
+              </div>
+
+              {roleError ? (
+                <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 p-3 text-xs leading-5 text-rose-200">
+                  {roleError}
+                </div>
+              ) : null}
+
+              {roleSuccess ? (
+                <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-xs leading-5 text-emerald-200">
+                  {roleSuccess}
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-5 space-y-3">
               <ActionButton disabled>Сменить тариф</ActionButton>
               <ActionButton disabled>Продлить подписку</ActionButton>
-              <ActionButton disabled>Изменить роль</ActionButton>
               <ActionButton disabled>Управлять лимитами</ActionButton>
               <ActionButton disabled danger>
                 Заблокировать пользователя
@@ -210,8 +325,8 @@ export default function AdminUserDetailsPage() {
             </div>
 
             <div className="mt-5 rounded-2xl border border-amber-300/20 bg-amber-300/10 p-4 text-xs leading-5 text-amber-100">
-              Перед включением действий добавим server-side API routes, RLS,
-              service-role проверки и admin_audit_logs.
+              Все действия будут идти через server API routes, service role,
+              проверки admin role и admin_audit_logs.
             </div>
           </aside>
         </section>
@@ -273,6 +388,7 @@ function InfoCard({
             className="rounded-2xl border border-white/[0.07] bg-white/[0.045] px-4 py-3"
           >
             <div className="text-xs font-semibold text-slate-500">{label}</div>
+
             <div className="mt-1 break-all text-sm font-bold text-slate-200">
               {value}
             </div>
@@ -295,9 +411,11 @@ function MetricBox({
   return (
     <div className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
       <div className="text-sm font-semibold text-slate-400">{label}</div>
+
       <div className="mt-3 text-4xl font-black tracking-[-0.06em]">
         {value}
       </div>
+
       <div className="mt-4 text-xs text-slate-500">{description}</div>
     </div>
   );
@@ -335,14 +453,17 @@ function ActionButton({
   children,
   disabled,
   danger,
+  onClick,
 }: {
   children: React.ReactNode;
   disabled?: boolean;
   danger?: boolean;
+  onClick?: () => void;
 }) {
   return (
     <button
       disabled={disabled}
+      onClick={onClick}
       className={`w-full rounded-2xl border px-4 py-3 text-left text-sm font-bold transition ${
         danger
           ? "border-rose-400/20 bg-rose-400/10 text-rose-200"
