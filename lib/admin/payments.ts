@@ -8,7 +8,6 @@ export type AdminPayment = {
   amount: number;
   status: string;
   created_at: string;
-  updated_at?: string | null;
   user_email?: string | null;
 };
 

@@ -40,8 +40,7 @@ export async function GET(request: NextRequest) {
         inv_id,
         amount,
         status,
-        created_at,
-        updated_at
+        created_at
       `,
       )
       .order("created_at", { ascending: false });
