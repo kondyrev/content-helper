@@ -491,7 +491,19 @@ export default function AdminUserDetailsPage() {
                 Управлять тарифом
               </ActionButton>
             </div>
-          </aside>
+            <div className="mt-5 space-y-3">
+              <ActionButton disabled>Сбросить лимиты</ActionButton>
+
+              <ActionButton disabled danger>
+                Заблокировать пользователя
+              </ActionButton>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-amber-300/20 bg-amber-300/10 p-4 text-xs leading-5 text-amber-100">
+              Следующие actions: reset limits, block user, impersonation,
+              payment details.
+            </div>
+                      </aside>
         </section>
 
         <section className="grid gap-5 xl:grid-cols-3">
@@ -643,17 +655,25 @@ function PlaceholderPanel({
 function ActionButton({
   children,
   disabled,
+  danger,
   onClick,
 }: {
   children: React.ReactNode;
   disabled?: boolean;
+  danger?: boolean;
   onClick?: () => void;
 }) {
   return (
     <button
       disabled={disabled}
       onClick={onClick}
-      className="w-full rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-left text-sm font-bold text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+      className={`w-full rounded-2xl border px-4 py-3 text-left text-sm font-bold transition ${
+        danger
+          ? "border-rose-400/20 bg-rose-400/10 text-rose-200"
+          : "border-white/10 bg-white/[0.055] text-slate-200"
+      } ${
+        disabled ? "cursor-not-allowed opacity-50" : "hover:bg-white/[0.08]"
+      }`}
     >
       {children}
     </button>
