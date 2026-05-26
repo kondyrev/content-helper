@@ -3,7 +3,24 @@ import { supabaseServer } from "@/lib/supabase-server";
 
 type PlanId = "free" | "creator" | "smm_pro";
 
+type SubscriptionActionMode =
+  | "change_only"
+  | "activate_30"
+  | "extend_30"
+  | "extend_90"
+  | "set_custom_date"
+  | "reset_free";
+
 const VALID_PLANS: PlanId[] = ["free", "creator", "smm_pro"];
+
+const VALID_MODES: SubscriptionActionMode[] = [
+  "change_only",
+  "activate_30",
+  "extend_30",
+  "extend_90",
+  "set_custom_date",
+  "reset_free",
+];
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,18 +53,26 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const targetUserId = body.targetUserId as string;
-    const newPlanId = body.newPlanId as PlanId;
+    const targetUserId = body.targetUserId as string | undefined;
+    const requestedPlanId = body.newPlanId as PlanId | undefined;
+    const mode = body.mode as SubscriptionActionMode | undefined;
+    const customPeriodEnd = body.customPeriodEnd as string | undefined;
 
-    if (!targetUserId || !newPlanId) {
+    if (!targetUserId || !mode) {
       return NextResponse.json(
-        { error: "Missing targetUserId or newPlanId" },
+        { error: "Missing targetUserId or mode" },
         { status: 400 },
       );
     }
 
-    if (!VALID_PLANS.includes(newPlanId)) {
-      return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
+    if (!VALID_MODES.includes(mode)) {
+      return NextResponse.json({ error: "Invalid mode" }, { status: 400 });
+    }
+
+    if (mode !== "reset_free") {
+      if (!requestedPlanId || !VALID_PLANS.includes(requestedPlanId)) {
+        return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
+      }
     }
 
     const { data: targetProfile, error: targetError } = await supabaseServer
@@ -60,10 +85,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    const nextPlanId: PlanId =
+      mode === "reset_free" ? "free" : (requestedPlanId as PlanId);
+
     const { data: plan, error: planError } = await supabaseServer
       .from("plans")
       .select("id, name, daily_limit, price_month")
-      .eq("id", newPlanId)
+      .eq("id", nextPlanId)
       .single();
 
     if (planError || !plan) {
@@ -77,15 +105,58 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     const now = new Date();
-    const nextPeriodEnd = new Date(now);
-    nextPeriodEnd.setDate(nextPeriodEnd.getDate() + 30);
+
+    let nextPeriodEnd: string | null =
+      currentSubscription?.current_period_end || null;
+
+    if (mode === "activate_30") {
+      const date = new Date(now);
+      date.setDate(date.getDate() + 30);
+      nextPeriodEnd = date.toISOString();
+    }
+
+    if (mode === "extend_30" || mode === "extend_90") {
+      const daysToAdd = mode === "extend_30" ? 30 : 90;
+
+      const baseDate =
+        currentSubscription?.current_period_end &&
+        new Date(currentSubscription.current_period_end).getTime() > now.getTime()
+          ? new Date(currentSubscription.current_period_end)
+          : new Date(now);
+
+      baseDate.setDate(baseDate.getDate() + daysToAdd);
+      nextPeriodEnd = baseDate.toISOString();
+    }
+
+    if (mode === "set_custom_date") {
+      if (!customPeriodEnd) {
+        return NextResponse.json(
+          { error: "Missing customPeriodEnd" },
+          { status: 400 },
+        );
+      }
+
+      const customDate = new Date(customPeriodEnd);
+
+      if (Number.isNaN(customDate.getTime())) {
+        return NextResponse.json(
+          { error: "Invalid customPeriodEnd" },
+          { status: 400 },
+        );
+      }
+
+      nextPeriodEnd = customDate.toISOString();
+    }
+
+    if (mode === "reset_free" || nextPlanId === "free") {
+      nextPeriodEnd = null;
+    }
 
     const nextSubscription = {
       user_id: targetUserId,
-      plan_id: newPlanId,
+      plan_id: nextPlanId,
       status: "active",
-      current_period_end:
-        newPlanId === "free" ? null : nextPeriodEnd.toISOString(),
+      current_period_end: nextPeriodEnd,
       updated_at: now.toISOString(),
     };
 
@@ -125,7 +196,7 @@ export async function POST(request: NextRequest) {
     await supabaseServer.from("admin_audit_logs").insert({
       admin_id: user.id,
       target_user_id: targetUserId,
-      action: "change_plan",
+      action: "manage_subscription",
       entity_type: "subscription",
       entity_id: targetUserId,
       before_data: currentSubscription
@@ -142,8 +213,10 @@ export async function POST(request: NextRequest) {
       },
       metadata: {
         source: "admin_panel",
+        mode,
         target_email: targetProfile.email,
         plan,
+        custom_period_end: customPeriodEnd || null,
       },
     });
 
@@ -152,7 +225,7 @@ export async function POST(request: NextRequest) {
       subscription: nextSubscription,
     });
   } catch (error) {
-    console.error("Admin change plan error:", error);
+    console.error("Admin manage subscription error:", error);
 
     return NextResponse.json(
       { error: "Internal server error" },
