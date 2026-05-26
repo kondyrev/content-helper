@@ -515,6 +515,10 @@ ${result}
       return;
     }
 
+    if (mode === "register" && typeof window !== "undefined") {
+      window.ym?.(109420399, "reachGoal", "registration");
+    }
+
     setIsAuthModalOpen(false);
 
     showToast(
