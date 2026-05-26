@@ -242,7 +242,10 @@ export default function AdminUsersPage() {
                       </td>
 
                       <td className="px-2 py-4">
-                        <button className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]">
+                        <button
+                          onClick={() => router.push(`/admin/users/${user.id}`)}
+                          className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]"
+                        >
                           Открыть
                         </button>
                       </td>
