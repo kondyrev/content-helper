@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase";
+import { getAdminOverview } from "@/lib/admin/queries";
 import { AdminShell } from "./AdminShell";
 import { AdminOverviewHero } from "./AdminOverviewHero";
 import { AdminMetricsGrid } from "./AdminMetricsGrid";
@@ -58,20 +59,7 @@ export default function AdminOverviewPage() {
           return;
         }
 
-        const response = await fetch("/api/account/me", {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-        });
-
-        const data = await response.json();
-
-        if (!response.ok || data?.error) {
-          router.replace("/");
-          return;
-        }
-
-        const accountData = data as AccountResponse;
+        const accountData = (await getAdminOverview()) as AccountResponse;
 
         if (accountData.profile.role !== "admin") {
           router.replace("/dashboard");
@@ -166,10 +154,7 @@ export default function AdminOverviewPage() {
           </div>
         </div>
 
-        <UsersPreviewTable
-          profiles={profiles}
-          subscriptions={subscriptions}
-        />
+        <UsersPreviewTable profiles={profiles} subscriptions={subscriptions} />
       </div>
     </AdminShell>
   );
