@@ -3,6 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAdminOverview } from "@/lib/admin/queries";
+import {
+  AdminPayment,
+  getAdminPayments,
+  getFailedPayments,
+  getPaymentsRevenue,
+  getPendingPayments,
+  getSuccessfulPayments,
+} from "@/lib/admin/payments";
 import { AdminShell } from "@/components/admin/AdminShell";
 
 type Profile = {
@@ -11,31 +19,8 @@ type Profile = {
   role: "user" | "admin";
 };
 
-type Subscription = {
-  user_id: string;
-  plan_id: string;
-  status: string;
-  current_period_end: string | null;
-  plans: {
-    id: string;
-    name: string;
-    price_month: number;
-  } | null;
-};
-
 type AccountResponse = {
   profile: Profile;
-  profiles: Profile[];
-  subscriptions: Subscription[];
-};
-
-type PaymentMock = {
-  id: string;
-  userEmail: string;
-  amount: number;
-  status: "success" | "failed" | "pending";
-  provider: string;
-  createdAt: string;
 };
 
 export default function AdminPaymentsPage() {
@@ -43,8 +28,7 @@ export default function AdminPaymentsPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [adminProfile, setAdminProfile] = useState<Profile | null>(null);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [payments, setPayments] = useState<AdminPayment[]>([]);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -59,9 +43,10 @@ export default function AdminPaymentsPage() {
           return;
         }
 
+        const paymentsData = await getAdminPayments();
+
         setAdminProfile(accountData.profile);
-        setProfiles(accountData.profiles || []);
-        setSubscriptions(accountData.subscriptions || []);
+        setPayments(paymentsData);
       } catch (error) {
         console.error("Admin payments load error:", error);
         router.replace("/");
@@ -73,37 +58,15 @@ export default function AdminPaymentsPage() {
     loadPayments();
   }, [router]);
 
-  const mockPayments = useMemo<PaymentMock[]>(() => {
-    return subscriptions.slice(0, 12).map((subscription, index) => {
-      const profile = profiles.find(
-        (item) => item.id === subscription.user_id,
-      );
-
-      return {
-        id: `PAY-${1000 + index}`,
-        userEmail: profile?.email || "unknown@email.com",
-        amount: subscription.plans?.price_month || 0,
-        status:
-          index % 5 === 0
-            ? "failed"
-            : index % 4 === 0
-              ? "pending"
-              : "success",
-        provider: "Robokassa",
-        createdAt: new Date(
-          Date.now() - index * 86400000,
-        ).toISOString(),
-      };
-    });
-  }, [profiles, subscriptions]);
-
   const filteredPayments = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    return mockPayments.filter((payment) => {
+    return payments.filter((payment) => {
       const matchesSearch =
         !normalizedSearch ||
-        payment.userEmail.toLowerCase().includes(normalizedSearch) ||
+        payment.user_email?.toLowerCase().includes(normalizedSearch) ||
+        payment.user_id.toLowerCase().includes(normalizedSearch) ||
+        String(payment.inv_id || "").includes(normalizedSearch) ||
         payment.id.toLowerCase().includes(normalizedSearch);
 
       const matchesStatus =
@@ -111,24 +74,12 @@ export default function AdminPaymentsPage() {
 
       return matchesSearch && matchesStatus;
     });
-  }, [mockPayments, search, statusFilter]);
+  }, [payments, search, statusFilter]);
 
-  const successfulPayments = mockPayments.filter(
-    (item) => item.status === "success",
-  );
-
-  const failedPayments = mockPayments.filter(
-    (item) => item.status === "failed",
-  );
-
-  const pendingPayments = mockPayments.filter(
-    (item) => item.status === "pending",
-  );
-
-  const revenue = successfulPayments.reduce(
-    (sum, item) => sum + item.amount,
-    0,
-  );
+  const successfulPayments = getSuccessfulPayments(payments);
+  const failedPayments = getFailedPayments(payments);
+  const pendingPayments = getPendingPayments(payments);
+  const revenue = getPaymentsRevenue(payments);
 
   if (isLoading) {
     return (
@@ -158,8 +109,8 @@ export default function AdminPaymentsPage() {
               </h1>
 
               <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-400">
-                Контроль платежей, webhook событий, failed payments и revenue
-                analytics. Сейчас foundation с mock data.
+                Реальные платежи из таблицы payments: Robokassa invoice,
+                статусы, выручка и мониторинг проблемных оплат.
               </p>
             </div>
 
@@ -188,9 +139,13 @@ export default function AdminPaymentsPage() {
         </section>
 
         <section className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-          <RevenueChart revenue={revenue} />
+          <RevenueChart revenue={revenue} payments={payments} />
 
-          <WebhookPanel />
+          <WebhookPanel
+            pendingCount={pendingPayments.length}
+            failedCount={failedPayments.length}
+            successCount={successfulPayments.length}
+          />
         </section>
 
         <section className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
@@ -201,7 +156,7 @@ export default function AdminPaymentsPage() {
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Поиск по email или payment id..."
+                placeholder="Поиск по email, user id, payment id или inv_id..."
                 className="w-full bg-transparent text-white outline-none placeholder:text-slate-600"
               />
             </div>
@@ -212,9 +167,12 @@ export default function AdminPaymentsPage() {
               className="h-12 rounded-2xl border border-white/10 bg-[#111428] px-4 text-sm font-bold text-slate-200 outline-none"
             >
               <option value="all">Все статусы</option>
-              <option value="success">success</option>
               <option value="pending">pending</option>
+              <option value="succeeded">succeeded</option>
+              <option value="success">success</option>
               <option value="failed">failed</option>
+              <option value="error">error</option>
+              <option value="canceled">canceled</option>
             </select>
           </div>
 
@@ -222,11 +180,11 @@ export default function AdminPaymentsPage() {
             <table className="w-full border-collapse">
               <thead>
                 <tr className="border-b border-white/[0.07] text-left">
-                  <TableHead>Payment ID</TableHead>
+                  <TableHead>Invoice</TableHead>
                   <TableHead>User</TableHead>
+                  <TableHead>Plan</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Provider</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Actions</TableHead>
                 </tr>
@@ -238,35 +196,50 @@ export default function AdminPaymentsPage() {
                     key={payment.id}
                     className="border-b border-white/[0.06] transition hover:bg-white/[0.035]"
                   >
-                    <td className="px-2 py-4 text-sm font-bold text-slate-200">
-                      {payment.id}
+                    <td className="px-2 py-4">
+                      <div className="text-sm font-bold text-slate-200">
+                        {payment.inv_id ? `INV-${payment.inv_id}` : payment.id}
+                      </div>
+
+                      <div className="mt-1 max-w-[180px] truncate text-xs text-slate-600">
+                        {payment.id}
+                      </div>
                     </td>
 
                     <td className="px-2 py-4">
                       <div className="text-sm font-bold text-slate-200">
-                        {payment.userEmail}
+                        {payment.user_email || "Без email"}
+                      </div>
+
+                      <div className="mt-1 max-w-[220px] truncate text-xs text-slate-600">
+                        {payment.user_id}
                       </div>
                     </td>
 
+                    <td className="px-2 py-4">
+                      <PlanPill plan={payment.plan_id} />
+                    </td>
+
                     <td className="px-2 py-4 text-sm font-bold text-slate-200">
-                      {payment.amount.toLocaleString("ru-RU")} ₽
+                      {Number(payment.amount || 0).toLocaleString("ru-RU")} ₽
                     </td>
 
                     <td className="px-2 py-4">
                       <PaymentStatus status={payment.status} />
                     </td>
 
-                    <td className="px-2 py-4 text-sm text-slate-400">
-                      {payment.provider}
-                    </td>
-
                     <td className="px-2 py-4 text-sm text-slate-500">
-                      {new Date(payment.createdAt).toLocaleDateString("ru-RU")}
+                      {new Date(payment.created_at).toLocaleDateString("ru-RU")}
                     </td>
 
                     <td className="px-2 py-4">
-                      <button className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]">
-                        Подробнее
+                      <button
+                        onClick={() =>
+                          router.push(`/admin/users/${payment.user_id}`)
+                        }
+                        className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]"
+                      >
+                        Пользователь
                       </button>
                     </td>
                   </tr>
@@ -291,30 +264,24 @@ export default function AdminPaymentsPage() {
   );
 }
 
-function MetricCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function MetricCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/[0.07] bg-white/[0.045] px-4 py-3">
       <div className="text-xs font-semibold text-slate-500">{label}</div>
 
-      <div className="mt-1 text-2xl font-black tracking-tight">
-        {value}
-      </div>
+      <div className="mt-1 text-2xl font-black tracking-tight">{value}</div>
     </div>
   );
 }
 
 function RevenueChart({
   revenue,
+  payments,
 }: {
   revenue: number;
+  payments: AdminPayment[];
 }) {
-  const values = [35, 48, 42, 65, 51, 72, 61, 84, 76, 92];
+  const values = getChartValues(payments);
 
   return (
     <section className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
@@ -323,7 +290,7 @@ function RevenueChart({
           <div className="text-sm font-bold">Revenue Flow</div>
 
           <div className="mt-1 text-xs text-slate-500">
-            Далее подключим реальные payment_events
+            Выручка по реальным successful payments
           </div>
         </div>
 
@@ -349,49 +316,69 @@ function RevenueChart({
   );
 }
 
-function WebhookPanel() {
+function WebhookPanel({
+  pendingCount,
+  failedCount,
+  successCount,
+}: {
+  pendingCount: number;
+  failedCount: number;
+  successCount: number;
+}) {
   const events = [
-    "Robokassa success webhook",
-    "Pending invoice detected",
-    "Payment verification completed",
-    "Webhook retry queued",
+    {
+      title: "Successful payments",
+      meta: `${successCount} подтверждённых оплат`,
+      status: "ok",
+    },
+    {
+      title: "Pending payments",
+      meta: `${pendingCount} ожидают webhook/result`,
+      status: pendingCount > 0 ? "warning" : "ok",
+    },
+    {
+      title: "Failed payments",
+      meta: `${failedCount} проблемных оплат`,
+      status: failedCount > 0 ? "danger" : "ok",
+    },
+    {
+      title: "Webhook logs",
+      meta: "следующий этап: отдельная таблица webhook_logs",
+      status: "soon",
+    },
   ];
 
   return (
     <section className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-sm font-bold">Webhook Events</div>
+          <div className="text-sm font-bold">Webhook Monitor</div>
 
           <div className="mt-1 text-xs text-slate-500">
-            Foundation для webhook_logs
+            Foundation для Robokassa events
           </div>
         </div>
 
         <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[11px] font-bold text-emerald-200">
-          healthy
+          live
         </span>
       </div>
 
       <div className="mt-5 space-y-2">
-        {events.map((event, index) => (
+        {events.map((event) => (
           <div
-            key={event}
+            key={event.title}
             className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.045] px-4 py-3"
           >
             <div>
               <div className="text-sm font-bold text-slate-200">
-                {event}
+                {event.title}
               </div>
 
-              <div className="mt-1 text-xs text-slate-500">
-                event #{1000 + index}
-              </div>
+              <div className="mt-1 text-xs text-slate-500">{event.meta}</div>
             </div>
 
-            <span className="rounded-full bg-emerald-400/10 px-2 py-1 text-[11px] font-bold text-emerald-200">
-              ok
-            </span>
+            <EventStatus status={event.status} />
           </div>
         ))}
       </div>
@@ -399,15 +386,13 @@ function WebhookPanel() {
   );
 }
 
-function PaymentStatus({
-  status,
-}: {
-  status: "success" | "failed" | "pending";
-}) {
+function PaymentStatus({ status }: { status: string }) {
+  const normalized = status.toLowerCase();
+
   const className =
-    status === "success"
+    normalized === "succeeded" || normalized === "success"
       ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
-      : status === "failed"
+      : ["failed", "error", "canceled"].includes(normalized)
         ? "border-rose-400/20 bg-rose-400/10 text-rose-200"
         : "border-amber-300/20 bg-amber-300/10 text-amber-100";
 
@@ -420,14 +405,75 @@ function PaymentStatus({
   );
 }
 
-function TableHead({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function EventStatus({ status }: { status: string }) {
+  const className =
+    status === "ok"
+      ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+      : status === "danger"
+        ? "border-rose-400/20 bg-rose-400/10 text-rose-200"
+        : status === "warning"
+          ? "border-amber-300/20 bg-amber-300/10 text-amber-100"
+          : "border-white/10 bg-white/[0.055] text-slate-300";
+
+  return (
+    <span
+      className={`rounded-full border px-2 py-1 text-[11px] font-bold ${className}`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function PlanPill({ plan }: { plan: string }) {
+  const className =
+    plan === "smm_pro"
+      ? "border-cyan-400/20 bg-cyan-400/10 text-cyan-100"
+      : plan === "creator"
+        ? "border-violet-400/20 bg-violet-500/15 text-violet-200"
+        : "border-white/10 bg-white/[0.055] text-slate-300";
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-black ${className}`}
+    >
+      {plan}
+    </span>
+  );
+}
+
+function TableHead({ children }: { children: React.ReactNode }) {
   return (
     <th className="px-2 py-3 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600">
       {children}
     </th>
   );
+}
+
+function getChartValues(payments: AdminPayment[]) {
+  const successful = payments.filter((payment) =>
+    ["succeeded", "success"].includes(payment.status.toLowerCase()),
+  );
+
+  if (successful.length === 0) {
+    return [8, 8, 8, 8, 8, 8, 8, 8, 8, 8];
+  }
+
+  const lastTenDays = Array.from({ length: 10 }).map((_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (9 - index));
+
+    const dayKey = date.toISOString().slice(0, 10);
+
+    return successful
+      .filter((payment) => payment.created_at.slice(0, 10) === dayKey)
+      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  });
+
+  const max = Math.max(...lastTenDays);
+
+  if (max === 0) {
+    return lastTenDays.map(() => 8);
+  }
+
+  return lastTenDays.map((value) => Math.max(8, Math.round((value / max) * 92)));
 }
