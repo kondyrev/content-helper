@@ -49,7 +49,7 @@ export default function AdminPaymentsPage() {
         setPayments(paymentsData);
       } catch (error) {
         console.error("Admin payments load error:", error);
-        router.replace("/");
+        //router.replace("/");
       } finally {
         setIsLoading(false);
       }
