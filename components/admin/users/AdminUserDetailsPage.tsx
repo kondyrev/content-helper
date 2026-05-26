@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase";
 import { getAdminOverview } from "@/lib/admin/queries";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { PlanPill, RolePill, StatusPill } from "./UserPills";
 
 type Profile = {
   id: string;
@@ -18,12 +19,13 @@ type Subscription = {
   plan_id: string;
   status: string;
   current_period_end: string | null;
-  plans: {
-    id: string;
-    name: string;
-    daily_limit: number;
-    price_month: number;
-  } | null;
+};
+
+type Generation = {
+  id: string;
+  created_at: string;
+  topic: string | null;
+  platform: string | null;
 };
 
 type AccountResponse = {
@@ -33,120 +35,198 @@ type AccountResponse = {
 };
 
 export default function AdminUserDetailsPage() {
+  const params = useParams();
   const router = useRouter();
-  const params = useParams<{ userId: string }>();
-  const supabase = useMemo(() => createClient(), []);
+  const supabase = createClient();
+
+  const userId = params.userId as string;
 
   const [isLoading, setIsLoading] = useState(true);
-  const [isRoleUpdating, setIsRoleUpdating] = useState(false);
-  const [roleError, setRoleError] = useState<string | null>(null);
-  const [roleSuccess, setRoleSuccess] = useState<string | null>(null);
+  const [isUpdatingRole, setIsUpdatingRole] = useState(false);
+  const [isUpdatingPlan, setIsUpdatingPlan] = useState(false);
 
   const [adminProfile, setAdminProfile] = useState<Profile | null>(null);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [targetProfile, setTargetProfile] = useState<Profile | null>(null);
+  const [subscription, setSubscription] =
+    useState<Subscription | null>(null);
+
+  const [generations, setGenerations] = useState<Generation[]>([]);
+  const [pageError, setPageError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadUserDetails() {
+    async function loadUserPage() {
       try {
-        const accountData = (await getAdminOverview()) as AccountResponse;
+        setPageError(null);
+
+        const accountData =
+          (await getAdminOverview()) as AccountResponse;
 
         if (accountData.profile.role !== "admin") {
           router.replace("/dashboard");
           return;
         }
 
+        const target =
+          accountData.profiles.find(
+            (profile) => profile.id === userId,
+          ) || null;
+
+        const userSubscription =
+          accountData.subscriptions.find(
+            (item) => item.user_id === userId,
+          ) || null;
+
         setAdminProfile(accountData.profile);
-        setProfiles(accountData.profiles || []);
-        setSubscriptions(accountData.subscriptions || []);
+        setTargetProfile(target);
+        setSubscription(userSubscription);
+
+        const { data: generationsData } = await supabase
+          .from("generations")
+          .select("id, created_at, topic, platform")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        setGenerations(generationsData || []);
       } catch (error) {
-        console.error("Admin user details load error:", error);
-        router.replace("/");
+        console.error(error);
+
+        setPageError(
+          error instanceof Error
+            ? error.message
+            : "Не удалось загрузить пользователя.",
+        );
       } finally {
         setIsLoading(false);
       }
     }
 
-    loadUserDetails();
-  }, [router]);
+    loadUserPage();
+  }, [router, supabase, userId]);
 
-  const user = useMemo(() => {
-    return profiles.find((item) => item.id === params.userId) || null;
-  }, [profiles, params.userId]);
+  const generationCount = useMemo(
+    () => generations.length,
+    [generations],
+  );
 
-  const subscription = useMemo(() => {
-    return subscriptions.find((item) => item.user_id === params.userId) || null;
-  }, [subscriptions, params.userId]);
-
-  async function handleUpdateRole(newRole: "user" | "admin") {
-    if (!user) return;
-
-    setRoleError(null);
-    setRoleSuccess(null);
-
-    if (user.role === newRole) {
-      setRoleError(`У пользователя уже роль ${newRole}.`);
+  async function handleRoleChange(
+    nextRole: "user" | "admin",
+  ) {
+    if (!targetProfile || !adminProfile) {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Точно изменить роль пользователя ${user.email || user.id} на "${newRole}"?`,
-    );
-
-    if (!confirmed) return;
-
     try {
-      setIsRoleUpdating(true);
+      setIsUpdatingRole(true);
 
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
       if (!session?.access_token) {
-        router.replace("/");
-        return;
+        throw new Error("Unauthorized");
       }
 
-      const response = await fetch("/api/admin/users/update-role", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
+      const response = await fetch(
+        "/api/admin/users/update-role",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            targetUserId: targetProfile.id,
+            nextRole,
+          }),
         },
-        body: JSON.stringify({
-          targetUserId: user.id,
-          newRole,
-        }),
-      });
+      );
 
       const data = await response.json();
 
-      if (!response.ok || data?.error) {
-        throw new Error(data?.error || "Не удалось изменить роль.");
+      if (!response.ok || data.error) {
+        throw new Error(
+          data.error || "Не удалось обновить роль.",
+        );
       }
 
-      setProfiles((currentProfiles) =>
-        currentProfiles.map((profile) =>
-          profile.id === user.id
-            ? {
-                ...profile,
-                role: newRole,
-              }
-            : profile,
-        ),
-      );
-
-      setRoleSuccess(`Роль успешно изменена на ${newRole}.`);
+      setTargetProfile({
+        ...targetProfile,
+        role: nextRole,
+      });
     } catch (error) {
-      console.error("Update role client error:", error);
+      console.error(error);
 
-      setRoleError(
+      alert(
         error instanceof Error
           ? error.message
-          : "Не удалось изменить роль пользователя.",
+          : "Ошибка обновления роли.",
       );
     } finally {
-      setIsRoleUpdating(false);
+      setIsUpdatingRole(false);
+    }
+  }
+
+  async function handlePlanChange(
+    nextPlan: "free" | "creator" | "smm_pro",
+  ) {
+    if (!targetProfile) {
+      return;
+    }
+
+    try {
+      setIsUpdatingPlan(true);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Unauthorized");
+      }
+
+      const response = await fetch(
+        "/api/admin/subscriptions/change-plan",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            targetUserId: targetProfile.id,
+            newPlanId: nextPlan,
+          }),
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || data.error) {
+        throw new Error(
+          data.error || "Не удалось сменить тариф.",
+        );
+      }
+
+      setSubscription({
+        user_id: targetProfile.id,
+        plan_id: nextPlan,
+        status: "active",
+        current_period_end:
+          nextPlan === "free"
+            ? null
+            : data.subscription.current_period_end,
+      });
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Ошибка смены тарифа.",
+      );
+    } finally {
+      setIsUpdatingPlan(false);
     }
   }
 
@@ -154,371 +234,247 @@ export default function AdminUserDetailsPage() {
     return (
       <main className="min-h-screen bg-[#070812] px-6 py-6 text-white">
         <div className="h-12 w-64 animate-pulse rounded-2xl bg-white/10" />
-        <div className="mt-8 h-[620px] animate-pulse rounded-[28px] bg-white/10" />
+        <div className="mt-8 h-[520px] animate-pulse rounded-[28px] bg-white/10" />
       </main>
     );
   }
 
-  if (!adminProfile) {
-    return null;
-  }
-
-  if (!user) {
+  if (pageError) {
     return (
-      <AdminShell adminEmail={adminProfile.email}>
-        <div className="rounded-[28px] border border-white/10 bg-white/[0.055] p-8 text-center shadow-2xl backdrop-blur-2xl">
-          <div className="text-2xl font-black tracking-tight">
-            Пользователь не найден
+      <main className="min-h-screen bg-[#070812] px-6 py-6 text-white">
+        <div className="rounded-[28px] border border-rose-400/20 bg-rose-400/10 p-6 text-rose-100">
+          <div className="text-xl font-black">
+            Ошибка загрузки
           </div>
 
-          <p className="mt-3 text-sm text-slate-500">
-            Возможно, пользователь был удалён или указан неверный user id.
-          </p>
-
-          <button
-            onClick={() => router.push("/admin/users")}
-            className="mt-6 rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-3 text-sm font-bold text-slate-200 transition hover:bg-white/[0.08]"
-          >
-            Вернуться к пользователям
-          </button>
+          <pre className="mt-4 whitespace-pre-wrap text-sm">
+            {pageError}
+          </pre>
         </div>
-      </AdminShell>
+      </main>
     );
   }
 
-  const planId = subscription?.plan_id || "free";
-  const status = subscription?.status || "free";
-  const planName = subscription?.plans?.name || planId;
-  const dailyLimit = subscription?.plans?.daily_limit ?? 0;
-  const priceMonth = subscription?.plans?.price_month ?? 0;
+  if (!targetProfile || !adminProfile) {
+    return null;
+  }
 
   return (
     <AdminShell adminEmail={adminProfile.email}>
       <div className="space-y-5">
-        <section className="rounded-[28px] border border-white/10 bg-white/[0.055] p-6 shadow-2xl backdrop-blur-2xl sm:p-8">
-          <button
-            onClick={() => router.push("/admin/users")}
-            className="mb-6 rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-2 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08]"
-          >
-            ← Назад к пользователям
-          </button>
-
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <section className="rounded-[28px] border border-white/10 bg-white/[0.055] p-6 shadow-2xl backdrop-blur-2xl">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="inline-flex rounded-full border border-violet-400/20 bg-violet-500/15 px-3 py-1.5 text-xs font-bold text-violet-200">
-                User Profile
+              <div className="inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-bold text-cyan-100">
+                User Details
               </div>
 
-              <h1 className="mt-5 max-w-4xl text-3xl font-black leading-none tracking-[-0.06em] sm:text-5xl">
-                {user.email || "Пользователь без email"}
+              <h1 className="mt-5 text-4xl font-black tracking-[-0.07em]">
+                {targetProfile.email || "Без email"}
               </h1>
 
-              <p className="mt-4 max-w-3xl break-all text-sm leading-7 text-slate-400">
-                {user.id}
-              </p>
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <RolePill role={targetProfile.role} />
+
+                <PlanPill
+                  plan={subscription?.plan_id || "free"}
+                />
+
+                <StatusPill
+                  status={subscription?.status || "active"}
+                />
+              </div>
+
+              <div className="mt-6 space-y-2 text-sm text-slate-500">
+                <div>User ID: {targetProfile.id}</div>
+
+                <div>
+                  Registered:{" "}
+                  {new Date(
+                    targetProfile.created_at,
+                  ).toLocaleDateString("ru-RU")}
+                </div>
+
+                <div>
+                  Subscription End:{" "}
+                  {subscription?.current_period_end
+                    ? new Date(
+                        subscription.current_period_end,
+                      ).toLocaleDateString("ru-RU")
+                    : "Без ограничения"}
+                </div>
+              </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <RolePill role={user.role} />
-              <PlanPill plan={planId} />
-              <StatusPill status={status} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                disabled={
+                  isUpdatingRole ||
+                  targetProfile.id === adminProfile.id
+                }
+                onClick={() =>
+                  handleRoleChange(
+                    targetProfile.role === "admin"
+                      ? "user"
+                      : "admin",
+                  )
+                }
+                className="rounded-2xl border border-white/10 bg-white/[0.055] px-5 py-3 text-sm font-bold text-slate-100 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isUpdatingRole
+                  ? "Обновление..."
+                  : targetProfile.role === "admin"
+                    ? "Сделать user"
+                    : "Сделать admin"}
+              </button>
+
+              <button
+                onClick={() =>
+                  router.push("/admin/users")
+                }
+                className="rounded-2xl border border-white/10 bg-white/[0.055] px-5 py-3 text-sm font-bold text-slate-100 transition hover:bg-white/[0.08]"
+              >
+                Назад
+              </button>
             </div>
           </div>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
-          <div className="grid gap-5 md:grid-cols-2">
-            <InfoCard
-              title="Профиль"
-              items={[
-                ["Email", user.email || "—"],
-                ["Role", user.role],
-                ["Created", new Date(user.created_at).toLocaleString("ru-RU")],
-                ["User ID", user.id],
-              ]}
-            />
+        <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+          <div className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-bold">
+                  Subscription Actions
+                </div>
 
-            <InfoCard
-              title="Подписка"
-              items={[
-                ["Plan", planName],
-                ["Plan ID", planId],
-                ["Status", status],
-                ["Daily limit", dailyLimit.toString()],
-                ["Price / month", `${priceMonth.toLocaleString("ru-RU")} ₽`],
-                [
-                  "Period end",
-                  subscription?.current_period_end
-                    ? new Date(subscription.current_period_end).toLocaleString(
-                        "ru-RU",
-                      )
-                    : "—",
-                ],
-              ]}
-            />
+                <div className="mt-1 text-xs text-slate-500">
+                  Управление тарифом пользователя
+                </div>
+              </div>
 
-            <MetricBox
-              label="Генерации"
-              value="—"
-              description="Подключим generation history"
-            />
-
-            <MetricBox
-              label="Платежи"
-              value="—"
-              description="Подключим payments table"
-            />
-          </div>
-
-          <aside className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
-            <div className="text-sm font-bold">Admin Actions</div>
-
-            <div className="mt-1 text-xs text-slate-500">
-              Первое безопасное действие: смена роли через API + audit logs.
+              <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-1 text-[11px] font-bold text-cyan-100">
+                live
+              </div>
             </div>
 
-            <div className="mt-5 rounded-2xl border border-white/[0.07] bg-white/[0.045] p-4">
-              <div className="text-xs font-semibold text-slate-500">
-                Текущая роль
-              </div>
+            <div className="mt-5 grid gap-3">
+              <button
+                disabled={isUpdatingPlan}
+                onClick={() =>
+                  handlePlanChange("free")
+                }
+                className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.045] px-4 py-4 transition hover:bg-white/[0.07]"
+              >
+                <div className="text-left">
+                  <div className="text-sm font-bold text-slate-100">
+                    Free
+                  </div>
 
-              <div className="mt-2">
-                <RolePill role={user.role} />
-              </div>
-
-              <div className="mt-4 grid gap-2">
-                <ActionButton
-                  disabled={isRoleUpdating || user.role === "user"}
-                  onClick={() => handleUpdateRole("user")}
-                >
-                  Сделать user
-                </ActionButton>
-
-                <ActionButton
-                  disabled={isRoleUpdating || user.role === "admin"}
-                  onClick={() => handleUpdateRole("admin")}
-                >
-                  Сделать admin
-                </ActionButton>
-              </div>
-
-              {roleError ? (
-                <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 p-3 text-xs leading-5 text-rose-200">
-                  {roleError}
+                  <div className="mt-1 text-xs text-slate-500">
+                    Базовый бесплатный тариф
+                  </div>
                 </div>
-              ) : null}
 
-              {roleSuccess ? (
-                <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-xs leading-5 text-emerald-200">
-                  {roleSuccess}
+                <PlanPill plan="free" />
+              </button>
+
+              <button
+                disabled={isUpdatingPlan}
+                onClick={() =>
+                  handlePlanChange("creator")
+                }
+                className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.045] px-4 py-4 transition hover:bg-white/[0.07]"
+              >
+                <div className="text-left">
+                  <div className="text-sm font-bold text-slate-100">
+                    Creator
+                  </div>
+
+                  <div className="mt-1 text-xs text-slate-500">
+                    Creator subscription
+                  </div>
                 </div>
-              ) : null}
+
+                <PlanPill plan="creator" />
+              </button>
+
+              <button
+                disabled={isUpdatingPlan}
+                onClick={() =>
+                  handlePlanChange("smm_pro")
+                }
+                className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.045] px-4 py-4 transition hover:bg-white/[0.07]"
+              >
+                <div className="text-left">
+                  <div className="text-sm font-bold text-slate-100">
+                    SMM Pro
+                  </div>
+
+                  <div className="mt-1 text-xs text-slate-500">
+                    Максимальный тариф
+                  </div>
+                </div>
+
+                <PlanPill plan="smm_pro" />
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-bold">
+                  Recent Generations
+                </div>
+
+                <div className="mt-1 text-xs text-slate-500">
+                  Последние генерации пользователя
+                </div>
+              </div>
+
+              <div className="rounded-full border border-white/10 bg-white/[0.055] px-2 py-1 text-[11px] font-bold text-slate-300">
+                {generationCount}
+              </div>
             </div>
 
             <div className="mt-5 space-y-3">
-              <ActionButton disabled>Сменить тариф</ActionButton>
-              <ActionButton disabled>Продлить подписку</ActionButton>
-              <ActionButton disabled>Управлять лимитами</ActionButton>
-              <ActionButton disabled danger>
-                Заблокировать пользователя
-              </ActionButton>
+              {generations.map((generation) => (
+                <div
+                  key={generation.id}
+                  className="rounded-2xl border border-white/[0.07] bg-white/[0.045] p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-bold text-slate-100">
+                        {generation.topic ||
+                          "Без темы"}
+                      </div>
+
+                      <div className="mt-1 text-xs text-slate-500">
+                        {generation.platform ||
+                          "unknown"}
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-slate-500">
+                      {new Date(
+                        generation.created_at,
+                      ).toLocaleDateString("ru-RU")}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {generations.length === 0 ? (
+                <div className="rounded-2xl border border-white/[0.07] bg-white/[0.045] p-6 text-center text-sm text-slate-500">
+                  Генераций пока нет
+                </div>
+              ) : null}
             </div>
-
-            <div className="mt-5 rounded-2xl border border-amber-300/20 bg-amber-300/10 p-4 text-xs leading-5 text-amber-100">
-              Все действия будут идти через server API routes, service role,
-              проверки admin role и admin_audit_logs.
-            </div>
-          </aside>
-        </section>
-
-        <section className="grid gap-5 xl:grid-cols-3">
-          <PlaceholderPanel
-            title="Generation History"
-            subtitle="История AI генераций пользователя"
-            items={[
-              "последние генерации",
-              "использованные лимиты",
-              "темы видео",
-              "дата и статус",
-            ]}
-          />
-
-          <PlaceholderPanel
-            title="Payments"
-            subtitle="История оплат и Robokassa events"
-            items={[
-              "успешные платежи",
-              "ошибки оплат",
-              "invoice id",
-              "refund/manual activation",
-            ]}
-          />
-
-          <PlaceholderPanel
-            title="Support Tickets"
-            subtitle="Обращения пользователя в поддержку"
-            items={[
-              "открытые тикеты",
-              "статусы",
-              "приоритеты",
-              "последние сообщения",
-            ]}
-          />
+          </div>
         </section>
       </div>
     </AdminShell>
-  );
-}
-
-function InfoCard({
-  title,
-  items,
-}: {
-  title: string;
-  items: [string, string][];
-}) {
-  return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
-      <div className="mb-4 text-sm font-bold">{title}</div>
-
-      <div className="space-y-3">
-        {items.map(([label, value]) => (
-          <div
-            key={label}
-            className="rounded-2xl border border-white/[0.07] bg-white/[0.045] px-4 py-3"
-          >
-            <div className="text-xs font-semibold text-slate-500">{label}</div>
-
-            <div className="mt-1 break-all text-sm font-bold text-slate-200">
-              {value}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function MetricBox({
-  label,
-  value,
-  description,
-}: {
-  label: string;
-  value: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
-      <div className="text-sm font-semibold text-slate-400">{label}</div>
-
-      <div className="mt-3 text-4xl font-black tracking-[-0.06em]">
-        {value}
-      </div>
-
-      <div className="mt-4 text-xs text-slate-500">{description}</div>
-    </div>
-  );
-}
-
-function PlaceholderPanel({
-  title,
-  subtitle,
-  items,
-}: {
-  title: string;
-  subtitle: string;
-  items: string[];
-}) {
-  return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.055] p-5 shadow-2xl backdrop-blur-2xl">
-      <div className="text-sm font-bold">{title}</div>
-      <div className="mt-1 text-xs text-slate-500">{subtitle}</div>
-
-      <div className="mt-5 space-y-2">
-        {items.map((item) => (
-          <div
-            key={item}
-            className="rounded-2xl border border-white/[0.07] bg-white/[0.045] px-4 py-3 text-sm font-semibold text-slate-300"
-          >
-            {item}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ActionButton({
-  children,
-  disabled,
-  danger,
-  onClick,
-}: {
-  children: React.ReactNode;
-  disabled?: boolean;
-  danger?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      disabled={disabled}
-      onClick={onClick}
-      className={`w-full rounded-2xl border px-4 py-3 text-left text-sm font-bold transition ${
-        danger
-          ? "border-rose-400/20 bg-rose-400/10 text-rose-200"
-          : "border-white/10 bg-white/[0.055] text-slate-200"
-      } ${disabled ? "cursor-not-allowed opacity-50" : "hover:bg-white/[0.08]"}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function PlanPill({ plan }: { plan: string }) {
-  const className =
-    plan === "smm_pro"
-      ? "border-cyan-400/20 bg-cyan-400/10 text-cyan-100"
-      : plan === "creator"
-        ? "border-violet-400/20 bg-violet-500/15 text-violet-200"
-        : "border-white/10 bg-white/[0.055] text-slate-300";
-
-  return (
-    <span
-      className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-black ${className}`}
-    >
-      {plan}
-    </span>
-  );
-}
-
-function RolePill({ role }: { role: string }) {
-  const className =
-    role === "admin"
-      ? "border-amber-300/20 bg-amber-300/10 text-amber-100"
-      : "border-white/10 bg-white/[0.055] text-slate-300";
-
-  return (
-    <span
-      className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-black ${className}`}
-    >
-      {role}
-    </span>
-  );
-}
-
-function StatusPill({ status }: { status: string }) {
-  const isActive = status === "active";
-
-  return (
-    <span
-      className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-black ${
-        isActive
-          ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
-          : "border-white/10 bg-white/[0.055] text-slate-300"
-      }`}
-    >
-      {status}
-    </span>
   );
 }
